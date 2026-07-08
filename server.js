@@ -7,7 +7,7 @@ const crypto = require('crypto');
 
 const wa = require('./src/wa');
 const store = require('./src/store');
-const scheduler = require('./src/scheduler');
+const scheduler = require('./src/scheduler'); const heartbeat = require('./src/heartbeat');
 
 const PORT = process.env.PORT || 3900;
 const MEDIA_DIR = path.join(__dirname, 'media');
@@ -417,6 +417,5 @@ app.listen(PORT, '0.0.0.0', () => {
   else       console.log('  │  ⚠️  Sem senha (modo local)                  │');
   console.log('  └─────────────────────────────────────────────┘');
   console.log('');
-  wa.initialize();
-  scheduler.start();
+  wa.initialize(); scheduler.start(); heartbeat.start(wa);
 });

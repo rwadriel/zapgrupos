@@ -1,0 +1,141 @@
+const https = require('https');
+
+const TOPIC = process.env.ZG_HEARTBEAT_NTFY_TOPIC || 'zapgrupos-wagner-7k92mqp4s8';
+
+const MIN_HOURS = Number(process.env.ZG_HEARTBEAT_MIN_HOURS || 6);
+const MAX_HOURS = Number(process.env.ZG_HEARTBEAT_MAX_HOURS || 14);
+const CHECK_MINUTES = Number(process.env.ZG_HEARTBEAT_CHECK_MINUTES || 5);
+
+let started = false;
+let lastStatus = null;
+
+function randomDelayMs() {
+  const min = Math.max(1, MIN_HOURS) * 60 * 60 * 1000;
+  const max = Math.max(MIN_HOURS, MAX_HOURS) * 60 * 60 * 1000;
+  return Math.floor(min + Math.random() * (max - min));
+}
+
+function sendNtfy(title, message, priority = 'default', tags = 'bell') {
+  return new Promise((resolve) => {
+    const req = https.request({
+      hostname: 'ntfy.sh',
+      path: '/' + encodeURIComponent(TOPIC),
+      method: 'POST',
+      headers: {
+        'Title': title,
+        'Priority': priority,
+        'Tags': tags,
+        'Content-Type': 'text/plain; charset=utf-8'
+      }
+    }, (res) => {
+      res.resume();
+      res.on('end', resolve);
+    });
+
+    req.on('error', (err) => {
+      console.log('[SINAL] Falha ao enviar aviso:', err.message);
+      resolve();
+    });
+
+    req.write(message);
+    req.end();
+  });
+}
+
+function montarMensagem(wa) {
+  const status = wa && wa.state ? wa.state.status : 'desconhecido';
+  const me = wa && wa.state ? wa.state.me : null;
+  const erro = wa && wa.state ? wa.state.lastError : null;
+
+  let msg = 'Status do ZapGrupos: ' + status;
+
+  if (me && me.number) {
+    msg += '\nConta: ' + (me.name || 'WhatsApp') + ' - ' + me.number;
+  }
+
+  if (erro) {
+    msg += '\nErro: ' + erro;
+  }
+
+  msg += '\nHorário: ' + new Date().toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo'
+  });
+
+  return msg;
+}
+
+async function enviarSinal(wa) {
+  const status = wa && wa.state ? wa.state.status : 'desconhecido';
+
+  if (status === 'conectado') {
+    await sendNtfy(
+      '✅ ZapGrupos ativo',
+      montarMensagem(wa),
+      'default',
+      'white_check_mark'
+    );
+  } else {
+    await sendNtfy(
+      '⚠️ ZapGrupos precisa de atenção',
+      montarMensagem(wa),
+      'high',
+      'warning'
+    );
+  }
+}
+
+function agendarSinalAleatorio(wa) {
+  const delay = randomDelayMs();
+  const horas = Math.round((delay / 3600000) * 10) / 10;
+
+  console.log('[SINAL] Próximo sinal aleatório em aproximadamente ' + horas + ' hora(s).');
+
+  setTimeout(async () => {
+    await enviarSinal(wa);
+    agendarSinalAleatorio(wa);
+  }, delay);
+}
+
+function vigiarMudancaDeStatus(wa) {
+  setInterval(async () => {
+    const statusAtual = wa && wa.state ? wa.state.status : 'desconhecido';
+
+    if (lastStatus && statusAtual !== lastStatus) {
+      if (statusAtual === 'conectado') {
+        await sendNtfy(
+          '✅ WhatsApp reconectado',
+          'Status anterior: ' + lastStatus + '\n' + montarMensagem(wa),
+          'default',
+          'white_check_mark'
+        );
+      } else {
+        await sendNtfy(
+          '⚠️ WhatsApp mudou de status',
+          'Status anterior: ' + lastStatus + '\n' + montarMensagem(wa),
+          'high',
+          'warning'
+        );
+      }
+    }
+
+    lastStatus = statusAtual;
+  }, Math.max(1, CHECK_MINUTES) * 60 * 1000);
+}
+
+function start(wa) {
+  if (started) return;
+  started = true;
+
+  console.log('[SINAL] Ativado.');
+  console.log('[SINAL] Tópico ntfy:', TOPIC);
+
+  setTimeout(() => {
+    lastStatus = wa && wa.state ? wa.state.status : 'desconhecido';
+    enviarSinal(wa);
+  }, 90000);
+
+  vigiarMudancaDeStatus(wa);
+  agendarSinalAleatorio(wa);
+}
+
+module.exports = { start };
