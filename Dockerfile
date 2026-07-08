@@ -2,6 +2,7 @@ FROM node:20-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
+    dbus \
     fonts-liberation \
     libatk-bridge2.0-0 \
     libatk1.0-0 \
@@ -17,6 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV DBUS_SESSION_BUS_ADDRESS=/dev/null
 
 WORKDIR /app
 
