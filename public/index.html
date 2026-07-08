@@ -579,5 +579,43 @@ async function showHistory(){
   pollStatus();setInterval(pollStatus,3000);loadGroups();
 })();
 </script>
+
+<!-- Botão manual de teste do sinal no iPhone -->
+<a id="botao-sinal-iphone" href="/sinal.html" title="Testar aviso no iPhone">
+  🔔 Testar aviso no iPhone
+</a>
+
+<style>
+  #botao-sinal-iphone {
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    z-index: 99999;
+    background: #22c55e;
+    color: #052e16;
+    padding: 14px 18px;
+    border-radius: 999px;
+    font-family: Arial, sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    text-decoration: none;
+    box-shadow: 0 10px 30px rgba(0,0,0,.35);
+  }
+
+  #botao-sinal-iphone:hover {
+    filter: brightness(1.05);
+  }
+
+  @media (max-width: 600px) {
+    #botao-sinal-iphone {
+      left: 14px;
+      right: 14px;
+      bottom: 14px;
+      text-align: center;
+      border-radius: 14px;
+    }
+  }
+</style>
+
 </body>
 </html>
