@@ -32,4 +32,4 @@ RUN mkdir -p data media .wwebjs_auth
 
 EXPOSE 3900
 
-CMD ["dbus-daemon", "--system", "--fork", ";", "node", "server.js"]
+CMD ["sh", "-c", "dbus-daemon --system --fork 2>/dev/null; exec node server.js"]
