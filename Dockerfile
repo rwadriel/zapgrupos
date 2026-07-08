@@ -1,123 +1,40 @@
-
-FROM node:20-slim
-
-
+FROM node:20-bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-
-    chromium \
-
-    dbus \
-
-    dumb-init \
-
     ca-certificates \
-
+    curl \
+    gnupg \
+    dumb-init \
+    dbus \
+    dbus-x11 \
     fonts-liberation \
-
-    libasound2 \
-
-    libatk-bridge2.0-0 \
-
-    libatk1.0-0 \
-
-    libcairo2 \
-
-    libcups2 \
-
-    libdbus-1-3 \
-
-    libdrm2 \
-
-    libexpat1 \
-
-    libfontconfig1 \
-
-    libgbm1 \
-
-    libglib2.0-0 \
-
-    libgtk-3-0 \
-
-    libnspr4 \
-
-    libnss3 \
-
-    libpango-1.0-0 \
-
-    libpangocairo-1.0-0 \
-
-    libx11-6 \
-
-    libx11-xcb1 \
-
-    libxcb1 \
-
-    libxcomposite1 \
-
-    libxcursor1 \
-
-    libxdamage1 \
-
-    libxext6 \
-
-    libxfixes3 \
-
-    libxi6 \
-
-    libxrandr2 \
-
-    libxrender1 \
-
-    libxss1 \
-
-    libxtst6 \
-
     xdg-utils \
-
+    && mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /etc/apt/keyrings/google-linux-signing-keyring.gpg \
+    && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-linux-signing-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
-
-
 ENV PUPPETEER_SKIP_DOWNLOAD=true
-
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
 ENV DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket
-
 ENV DBUS_SESSION_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket
-
-ENV XDG_CONFIG_HOME=/tmp/.chromium
-
-ENV XDG_CACHE_HOME=/tmp/.chromium
-
-
+ENV XDG_CONFIG_HOME=/tmp/.chrome
+ENV XDG_CACHE_HOME=/tmp/.chrome
+ENV HOME=/tmp
 
 WORKDIR /app
 
-
-
 COPY package*.json ./
-
-
 
 RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi
 
-
-
 COPY . .
 
-
-
-RUN mkdir -p data media .wwebjs_auth /tmp/.chromium /run/dbus
-
-
+RUN mkdir -p data media .wwebjs_auth /tmp/.chrome /run/dbus
 
 EXPOSE 3900
 
-
-
-CMD ["sh", "-c", "echo '[Docker] Iniciando DBus + Node'; mkdir -p /run/dbus; rm -f /run/dbus/pid; dbus-daemon --system --fork --nopidfile || true; exec node server.js"]
-
+CMD ["sh", "-c", "echo '[Docker] VERSAO DEFINITIVA: Google Chrome Stable + DBus + Crashpad OFF'; mkdir -p /run/dbus /tmp/.chrome; rm -f /run/dbus/pid; dbus-daemon --system --fork --nopidfile || true; exec dumb-init node server.js"]
