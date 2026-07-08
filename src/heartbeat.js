@@ -16,7 +16,7 @@ function randomDelayMs() {
 }
 
 function sendNtfy(title, message, priority = 'default', tags = 'bell') {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const req = https.request({
       hostname: 'ntfy.sh',
       path: '/' + encodeURIComponent(TOPIC),
@@ -29,14 +29,13 @@ function sendNtfy(title, message, priority = 'default', tags = 'bell') {
       }
     }, (res) => {
       res.resume();
-      res.on('end', resolve);
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) resolve();
+        else reject(new Error('ntfy respondeu com status ' + res.statusCode));
+      });
     });
 
-    req.on('error', (err) => {
-      console.log('[SINAL] Falha ao enviar aviso:', err.message);
-      resolve();
-    });
-
+    req.on('error', reject);
     req.write(message);
     req.end();
   });
@@ -64,8 +63,18 @@ function montarMensagem(wa) {
   return msg;
 }
 
-async function enviarSinal(wa) {
+async function enviarSinal(wa, manual = false) {
   const status = wa && wa.state ? wa.state.status : 'desconhecido';
+
+  if (manual) {
+    await sendNtfy(
+      '🔔 Teste manual do ZapGrupos',
+      montarMensagem(wa),
+      'high',
+      'bell'
+    );
+    return;
+  }
 
   if (status === 'conectado') {
     await sendNtfy(
@@ -84,6 +93,10 @@ async function enviarSinal(wa) {
   }
 }
 
+async function enviarSinalManual(wa) {
+  await enviarSinal(wa, true);
+}
+
 function agendarSinalAleatorio(wa) {
   const delay = randomDelayMs();
   const horas = Math.round((delay / 3600000) * 10) / 10;
@@ -91,7 +104,12 @@ function agendarSinalAleatorio(wa) {
   console.log('[SINAL] Próximo sinal aleatório em aproximadamente ' + horas + ' hora(s).');
 
   setTimeout(async () => {
-    await enviarSinal(wa);
+    try {
+      await enviarSinal(wa, false);
+    } catch (err) {
+      console.log('[SINAL] Falha ao enviar sinal aleatório:', err.message);
+    }
+
     agendarSinalAleatorio(wa);
   }, delay);
 }
@@ -101,20 +119,24 @@ function vigiarMudancaDeStatus(wa) {
     const statusAtual = wa && wa.state ? wa.state.status : 'desconhecido';
 
     if (lastStatus && statusAtual !== lastStatus) {
-      if (statusAtual === 'conectado') {
-        await sendNtfy(
-          '✅ WhatsApp reconectado',
-          'Status anterior: ' + lastStatus + '\n' + montarMensagem(wa),
-          'default',
-          'white_check_mark'
-        );
-      } else {
-        await sendNtfy(
-          '⚠️ WhatsApp mudou de status',
-          'Status anterior: ' + lastStatus + '\n' + montarMensagem(wa),
-          'high',
-          'warning'
-        );
+      try {
+        if (statusAtual === 'conectado') {
+          await sendNtfy(
+            '✅ WhatsApp reconectado',
+            'Status anterior: ' + lastStatus + '\n' + montarMensagem(wa),
+            'default',
+            'white_check_mark'
+          );
+        } else {
+          await sendNtfy(
+            '⚠️ WhatsApp mudou de status',
+            'Status anterior: ' + lastStatus + '\n' + montarMensagem(wa),
+            'high',
+            'warning'
+          );
+        }
+      } catch (err) {
+        console.log('[SINAL] Falha ao avisar mudança de status:', err.message);
       }
     }
 
@@ -131,11 +153,17 @@ function start(wa) {
 
   setTimeout(() => {
     lastStatus = wa && wa.state ? wa.state.status : 'desconhecido';
-    enviarSinal(wa);
+
+    enviarSinal(wa, false).catch(err => {
+      console.log('[SINAL] Falha ao enviar sinal inicial:', err.message);
+    });
   }, 90000);
 
   vigiarMudancaDeStatus(wa);
   agendarSinalAleatorio(wa);
 }
 
-module.exports = { start };
+module.exports = {
+  start,
+  enviarSinalManual
+};

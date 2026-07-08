@@ -407,6 +407,24 @@ app.post('/api/campaigns/:id/launch', (req, res) => {
 // ===== Histórico de lançamentos =====
 app.get('/api/launches', (req, res) => res.json(store.listLaunches()));
 
+
+// ===== Teste manual de sinal no iPhone =====
+app.post('/api/sinal/test', async (req, res) => {
+  try {
+    await heartbeat.enviarSinalManual(wa);
+    res.json({
+      ok: true,
+      status: wa.state.status,
+      message: 'Sinal enviado para o iPhone.'
+    });
+  } catch (e) {
+    res.status(500).json({
+      ok: false,
+      error: e.message
+    });
+  }
+});
+
 // ===== Boot =====
 app.listen(PORT, '0.0.0.0', () => {
   console.log('');

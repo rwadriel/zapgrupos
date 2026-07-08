@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Teste de Sinal - ZapGrupos</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #0f172a;
+      color: #e5e7eb;
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .box {
+      width: 100%;
+      max-width: 420px;
+      background: #111827;
+      border: 1px solid #374151;
+      border-radius: 18px;
+      padding: 24px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.35);
+      text-align: center;
+    }
+
+    h1 {
+      margin-top: 0;
+      font-size: 24px;
+    }
+
+    p {
+      color: #cbd5e1;
+      line-height: 1.5;
+    }
+
+    button {
+      width: 100%;
+      border: none;
+      border-radius: 12px;
+      padding: 16px;
+      font-size: 18px;
+      font-weight: 700;
+      cursor: pointer;
+      background: #22c55e;
+      color: #052e16;
+      margin-top: 14px;
+    }
+
+    button:disabled {
+      opacity: .65;
+      cursor: wait;
+    }
+
+    .status {
+      margin-top: 18px;
+      min-height: 24px;
+      color: #facc15;
+      white-space: pre-line;
+    }
+
+    a {
+      color: #93c5fd;
+    }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>🔔 Teste de Sinal</h1>
+    <p>Toque no botão abaixo para enviar agora uma notificação de teste para o seu iPhone pelo ntfy.</p>
+
+    <button id="btn">Enviar teste para o iPhone</button>
+
+    <div id="status" class="status"></div>
+
+    <p style="font-size:13px;margin-top:24px;">
+      <a href="/">Voltar para o painel</a>
+    </p>
+  </div>
+
+  <script>
+    const btn = document.getElementById('btn');
+    const statusEl = document.getElementById('status');
+
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      statusEl.textContent = 'Enviando teste...';
+
+      try {
+        const res = await fetch('/api/sinal/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          throw new Error(data.error || 'Falha ao enviar o teste.');
+        }
+
+        statusEl.textContent = '✅ Teste enviado. Veja a notificação no iPhone.';
+      } catch (err) {
+        statusEl.textContent = '❌ Erro: ' + err.message + '\nSe estiver deslogado, entre primeiro no painel principal.';
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
