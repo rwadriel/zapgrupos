@@ -73,6 +73,52 @@ function addDaysToDateString(dateStr, days) {
   return `${yy}-${mm}-${dd}`;
 }
 
+
+
+// ===== CORREÇÃO ZAPGRUPOS: DATAS COM FUSO DO BRASIL =====
+function zgGetClientOffsetMinutes(value) {
+  const n = Number.parseInt(value, 10);
+  if (Number.isFinite(n) && Math.abs(n) <= 14 * 60) return n;
+  return 180; // America/Sao_Paulo
+}
+
+function zgParseClientDateTime(value, offsetMinutes = 180) {
+  if (!value) return null;
+  const raw = String(value).trim();
+
+  if (/(Z|[+-]\d{2}:?\d{2})$/i.test(raw)) {
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (!m) {
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  const [, yy, mo, dd, hh, mi, ss = '0'] = m;
+  const utcMs = Date.UTC(+yy, +mo - 1, +dd, +hh, +mi, +ss) + offsetMinutes * 60000;
+  const d = new Date(utcMs);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function zgBuildClientDateFromParts(dateValue, timeValue, dayOffset = 0, offsetMinutes = 180) {
+  const dm = String(dateValue || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const tm = String(timeValue || '09:00').match(/^(\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (!dm || !tm) return null;
+
+  const [, yy, mo, dd] = dm;
+  const [, hh, mi, ss = '0'] = tm;
+  const utcMs = Date.UTC(+yy, +mo - 1, +dd + (Number.parseInt(dayOffset, 10) || 0), +hh, +mi, +ss) + offsetMinutes * 60000;
+  const d = new Date(utcMs);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function zgIsPastOrTooClose(date, graceMs = 5000) {
+  return !date || Number.isNaN(date.getTime()) || date.getTime() <= Date.now() + graceMs;
+}
+
 function authMiddleware(req, res, next) {
   if (!SENHA) return next();
   if (req.path === '/api/login') return next();
@@ -145,23 +191,26 @@ app.post('/api/jobs', upload.single('file'), (req, res) => {
     const b = req.body;
     const groupIds = JSON.parse(b.groupIds || '[]');
     if (!groupIds.length) return res.status(400).json({ error: 'Selecione ao menos um grupo.' });
+
     const type = b.type;
-    if (!['texto', 'midia', 'audio', 'enquete'].includes(type))
-      return res.status(400).json({ error: 'Tipo de mensagem inválido.' });
+    if (!['texto', 'midia', 'audio', 'enquete'].includes(type)) return res.status(400).json({ error: 'Tipo de mensagem inválido.' });
     if (type === 'texto' && !b.text) return res.status(400).json({ error: 'Escreva o texto.' });
-    if ((type === 'midia' || type === 'audio') && !req.file)
-      return res.status(400).json({ error: 'Envie o arquivo de mídia.' });
+    if ((type === 'midia' || type === 'audio') && !req.file) return res.status(400).json({ error: 'Envie o arquivo de mídia.' });
 
     let pollOptions = [];
     if (type === 'enquete') {
       pollOptions = JSON.parse(b.pollOptions || '[]').map(s => s.trim()).filter(Boolean);
-      if (!b.pollQuestion || pollOptions.length < 2)
-        return res.status(400).json({ error: 'Enquete precisa de pergunta e ao menos 2 opções.' });
+      if (!b.pollQuestion || pollOptions.length < 2) return res.status(400).json({ error: 'Enquete precisa de pergunta e ao menos 2 opções.' });
     }
 
     const sendNow = b.sendNow === 'true';
-    const sendAt = sendNow ? new Date().toISOString() : new Date(b.sendAt).toISOString();
-    if (!sendNow && (!b.sendAt || isNaN(new Date(b.sendAt)))) return res.status(400).json({ error: 'Data/hora inválida.' });
+    const offset = zgGetClientOffsetMinutes(b.clientOffsetMinutes || b.timezoneOffset || b.tzOffset);
+    const sendAtDate = sendNow ? new Date() : zgParseClientDateTime(b.sendAtISO || b.sendAt, offset);
+
+    if (!sendNow && !sendAtDate) return res.status(400).json({ error: 'Data/hora inválida.' });
+    if (!sendNow && zgIsPastOrTooClose(sendAtDate)) {
+      return res.status(400).json({ error: 'Escolha uma data/hora futura. O agendamento não foi enviado imediatamente.' });
+    }
 
     const job = {
       id: crypto.randomUUID(), status: 'agendada', type, groupIds,
@@ -170,14 +219,18 @@ app.post('/api/jobs', upload.single('file'), (req, res) => {
       filePath: req.file ? req.file.path : null, fileName: req.file ? req.file.originalname : null,
       pollQuestion: b.pollQuestion || null, pollOptions, allowMultiple: b.allowMultiple === 'true',
       mentionAll: b.mentionAll === 'true', humanize: b.humanize !== 'false',
-      repeat: b.repeat || 'nenhuma', sendAt, results: [], createdAt: new Date().toISOString()
+      repeat: b.repeat || 'nenhuma', sendAt: sendAtDate.toISOString(),
+      results: [], createdAt: new Date().toISOString()
     };
+
     store.addJob(job);
+
     if (sendNow) {
       scheduler.processJob(job).catch(e => {
         store.updateJob(job.id, { status: 'falhou', results: [{ ok: false, error: e.message }] });
       });
     }
+
     res.json(job);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -291,19 +344,33 @@ app.post('/api/campaigns/:id/launch', (req, res) => {
   try {
     const c = store.getCampaign(req.params.id);
     if (!c) return res.status(404).json({ error: 'Campanha não encontrada.' });
-    const { startDate, groupIds, groupNames, steps, timezoneOffset, tzOffset } = req.body;
+
+    const { startDate, groupIds, groupNames, steps, clientOffsetMinutes, timezoneOffset, tzOffset } = req.body;
+    const offset = zgGetClientOffsetMinutes(clientOffsetMinutes ?? timezoneOffset ?? tzOffset);
+
     if (!startDate) return res.status(400).json({ error: 'Escolha a data de início.' });
     if (!groupIds || !groupIds.length) return res.status(400).json({ error: 'Selecione ao menos um grupo.' });
     if (!steps || !steps.length) return res.status(400).json({ error: 'A campanha não tem etapas.' });
 
     const jobIds = [];
-    const baseDate = new Date(startDate + 'T00:00:00');
+    const normalizedSteps = steps
+      .slice()
+      .sort((a, b) => (a.dayOffset || 0) === (b.dayOffset || 0)
+        ? String(a.time || '09:00').localeCompare(String(b.time || '09:00'))
+        : (a.dayOffset || 0) - (b.dayOffset || 0));
 
-    for (const step of steps) {
-      const sendDate = new Date(baseDate);
-      sendDate.setDate(sendDate.getDate() + (step.dayOffset || 0));
-      const [h, m] = (step.time || '09:00').split(':').map(Number);
-      sendDate.setHours(h, m, 0, 0);
+    for (const step of normalizedSteps) {
+      const sendDate = zgBuildClientDateFromParts(startDate, step.time || '09:00', step.dayOffset || 0, offset);
+
+      if (!sendDate) {
+        return res.status(400).json({ error: `Data/hora inválida na etapa ${step.order || ''}.` });
+      }
+
+      if (zgIsPastOrTooClose(sendDate)) {
+        return res.status(400).json({
+          error: `A etapa ${step.order || ''} ficou no passado. Ajuste a data de início ou o horário para entrar na fila.`
+        });
+      }
 
       const job = {
         id: crypto.randomUUID(), status: 'agendada', type: step.type,
@@ -314,12 +381,12 @@ app.post('/api/campaigns/:id/launch', (req, res) => {
         pollOptions: step.pollOptions || [],
         allowMultiple: !!step.allowMultiple,
         mentionAll: !!step.mentionAll, humanize: step.humanize !== false,
-        repeat: 'nenhuma',
-        sendAt: sendDate.toISOString(),
+        repeat: 'nenhuma', sendAt: sendDate.toISOString(),
         results: [],
         campaignId: c.id, campaignName: c.name, stepOrder: step.order,
         createdAt: new Date().toISOString()
       };
+
       store.addJob(job);
       jobIds.push(job.id);
     }
@@ -328,11 +395,11 @@ app.post('/api/campaigns/:id/launch', (req, res) => {
       id: crypto.randomUUID(),
       campaignId: c.id, campaignName: c.name,
       startDate, groupIds, groupNames,
-      stepCount: steps.length, jobIds,
+      stepCount: normalizedSteps.length, jobIds,
       launchedAt: new Date().toISOString()
     };
-    store.addLaunch(launch);
 
+    store.addLaunch(launch);
     res.json({ ok: true, launch, jobCount: jobIds.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

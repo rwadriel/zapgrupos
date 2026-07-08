@@ -1,5 +1,4 @@
 // sender.js — motor de envio com simulação de comportamento humano
-
 const fs = require('fs');
 const { MessageMedia, Poll } = require('whatsapp-web.js');
 const { client, state } = require('./wa');
@@ -21,51 +20,34 @@ function recordingMs(filePath) {
   }
 }
 
-function cleanMentionToken(id) {
-  return String(id || '')
-    .replace('@c.us', '')
-    .replace('@s.whatsapp.net', '')
-    .replace('@lid', '')
-    .trim();
+function normalizeMentionId(participant) {
+  const raw = participant?.id?._serialized || participant?.id || participant?._serialized || '';
+  if (!raw || typeof raw !== 'string') return null;
+  if (!raw.endsWith('@c.us') && !raw.endsWith('@lid')) return null;
+  return raw;
 }
 
-async function buildMentionAll(chat) {
-  if (!chat || !chat.isGroup || !Array.isArray(chat.participants)) {
-    return { mentions: [], text: '' };
-  }
+async function getMentionsForAll(chat) {
+  if (!chat || !chat.isGroup || !Array.isArray(chat.participants)) return [];
 
   const myId = client.info?.wid?._serialized;
-
   const mentions = chat.participants
-    .map(p => p?.id?._serialized)
+    .map(normalizeMentionId)
     .filter(Boolean)
     .filter(id => id !== myId);
 
-  const text = mentions
-    .map(id => cleanMentionToken(id))
-    .filter(Boolean)
-    .map(n => `@${n}`)
-    .join(' ');
-
-  return { mentions, text };
+  return [...new Set(mentions)];
 }
 
-function appendMentionsToText(originalText, mentionData) {
-  const base = String(originalText || '').trim();
+async function buildSendOptions(job, chat) {
+  const options = { waitUntilMsgSent: true };
 
-  if (!mentionData || !mentionData.mentions.length || !mentionData.text) {
-    return base;
+  if (job.mentionAll && chat.isGroup) {
+    const mentions = await getMentionsForAll(chat);
+    if (mentions.length) options.mentions = mentions;
   }
 
-  return `${base}\n\n${mentionData.text}`;
-}
-
-async function sendMentionOnly(chat, mentionData) {
-  if (!mentionData || !mentionData.mentions.length || !mentionData.text) return;
-
-  await chat.sendMessage(mentionData.text, {
-    mentions: mentionData.mentions
-  });
+  return options;
 }
 
 async function sendToGroup(job, groupId) {
@@ -75,69 +57,40 @@ async function sendToGroup(job, groupId) {
 
   const chat = await client.getChatById(groupId);
   const humanize = job.humanize !== false;
-
-  const mentionData = job.mentionAll && chat.isGroup
-    ? await buildMentionAll(chat)
-    : { mentions: [], text: '' };
-
-  const mentionOptions = mentionData.mentions.length
-    ? { mentions: mentionData.mentions }
-    : {};
+  const options = await buildSendOptions(job, chat);
 
   switch (job.type) {
     case 'texto': {
-      const finalText = appendMentionsToText(job.text, mentionData);
-
       if (humanize) {
         await chat.sendStateTyping();
-        await sleep(typingMs(finalText));
+        await sleep(typingMs(job.text));
         await chat.clearState();
       }
-
-      await chat.sendMessage(finalText, mentionOptions);
+      await chat.sendMessage(job.text, options);
       break;
     }
 
     case 'midia': {
       const media = MessageMedia.fromFilePath(job.filePath);
-      const finalCaption = appendMentionsToText(job.caption || '', mentionData);
-
-      if (humanize && finalCaption) {
+      if (humanize && job.caption) {
         await chat.sendStateTyping();
-        await sleep(typingMs(finalCaption));
+        await sleep(typingMs(job.caption));
         await chat.clearState();
       } else if (humanize) {
         await sleep(jitter(1500, 4000));
       }
-
-      await chat.sendMessage(media, {
-        ...mentionOptions,
-        caption: finalCaption || undefined
-      });
-
+      await chat.sendMessage(media, { ...options, caption: job.caption || undefined });
       break;
     }
 
     case 'audio': {
       const media = MessageMedia.fromFilePath(job.filePath);
-
       if (humanize) {
         await chat.sendStateRecording();
         await sleep(recordingMs(job.filePath));
         await chat.clearState();
       }
-
-      await chat.sendMessage(media, {
-        sendAudioAsVoice: true
-      });
-
-      // Áudio não tem texto/caption confiável para mencionar.
-      // Por isso enviamos uma segunda mensagem só com as menções.
-      if (mentionData.mentions.length) {
-        await sleep(jitter(1200, 2500));
-        await sendMentionOnly(chat, mentionData);
-      }
-
+      await chat.sendMessage(media, { ...options, sendAudioAsVoice: true });
       break;
     }
 
@@ -147,19 +100,10 @@ async function sendToGroup(job, groupId) {
         await sleep(typingMs(job.pollQuestion + (job.pollOptions || []).join('')));
         await chat.clearState();
       }
-
       const poll = new Poll(job.pollQuestion, job.pollOptions, {
         allowMultipleAnswers: !!job.allowMultiple
       });
-
-      await chat.sendMessage(poll);
-
-      // Enquete também não é texto comum, então a menção vai separada.
-      if (mentionData.mentions.length) {
-        await sleep(jitter(1200, 2500));
-        await sendMentionOnly(chat, mentionData);
-      }
-
+      await chat.sendMessage(poll, options);
       break;
     }
 
@@ -170,36 +114,20 @@ async function sendToGroup(job, groupId) {
 
 async function runJob(job, onProgress) {
   const results = [];
-
   for (let i = 0; i < job.groupIds.length; i++) {
     const groupId = job.groupIds[i];
-
     try {
       await sendToGroup(job, groupId);
-      results.push({
-        groupId,
-        ok: true,
-        at: new Date().toISOString()
-      });
+      results.push({ groupId, ok: true, at: new Date().toISOString() });
     } catch (e) {
-      results.push({
-        groupId,
-        ok: false,
-        error: e.message,
-        at: new Date().toISOString()
-      });
+      results.push({ groupId, ok: false, error: e.message, at: new Date().toISOString() });
     }
-
     if (onProgress) onProgress(results);
-
     if (i < job.groupIds.length - 1 && job.humanize !== false) {
       await sleep(jitter(8000, 20000));
     }
   }
-
   return results;
 }
 
-module.exports = {
-  runJob
-};
+module.exports = { runJob };
