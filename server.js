@@ -28,6 +28,51 @@ function parseCookies(req, res, next) {
   next();
 }
 
+
+function parseClientDateTime(value, timezoneOffset) {
+  if (!value) return null;
+
+  const raw = String(value).trim();
+
+  // Se já veio com timezone/Z, respeita.
+  if (/[zZ]$|[+-]\d{2}:\d{2}$/.test(raw)) {
+    const d = new Date(raw);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  // Formato vindo de input datetime-local: YYYY-MM-DDTHH:mm
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (!m) return null;
+
+  const [, y, mo, da, h, mi, s = '0'] = m;
+
+  // getTimezoneOffset do navegador: Brasil normalmente 180.
+  // Fallback 180 para evitar o erro do Docker UTC.
+  const offset = Number.isFinite(Number(timezoneOffset)) ? Number(timezoneOffset) : 180;
+
+  const utcMs =
+    Date.UTC(Number(y), Number(mo) - 1, Number(da), Number(h), Number(mi), Number(s)) +
+    offset * 60000;
+
+  const d = new Date(utcMs);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function addDaysToDateString(dateStr, days) {
+  const m = String(dateStr || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) throw new Error('Data de início inválida.');
+
+  const [, y, mo, da] = m;
+  const d = new Date(Date.UTC(Number(y), Number(mo) - 1, Number(da)));
+  d.setUTCDate(d.getUTCDate() + Number(days || 0));
+
+  const yy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+
+  return `${yy}-${mm}-${dd}`;
+}
+
 function authMiddleware(req, res, next) {
   if (!SENHA) return next();
   if (req.path === '/api/login') return next();
@@ -246,7 +291,7 @@ app.post('/api/campaigns/:id/launch', (req, res) => {
   try {
     const c = store.getCampaign(req.params.id);
     if (!c) return res.status(404).json({ error: 'Campanha não encontrada.' });
-    const { startDate, groupIds, groupNames, steps } = req.body;
+    const { startDate, groupIds, groupNames, steps, timezoneOffset, tzOffset } = req.body;
     if (!startDate) return res.status(400).json({ error: 'Escolha a data de início.' });
     if (!groupIds || !groupIds.length) return res.status(400).json({ error: 'Selecione ao menos um grupo.' });
     if (!steps || !steps.length) return res.status(400).json({ error: 'A campanha não tem etapas.' });

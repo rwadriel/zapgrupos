@@ -237,6 +237,7 @@ wireDrop('#audioDrop','#audioFile','#audioDropText','Clique para escolher áudio
 $('#addPollOpt').addEventListener('click',()=>{const n=$$('#pollOpts .poll-opt').length+1;if(n>12)return toast('Máximo 12 opções.',true);const d=document.createElement('div');d.className='poll-opt';d.innerHTML=`<input type="text" placeholder="Opção ${n}"><span class="rm">×</span>`;$('#pollOpts').appendChild(d)});
 $('#pollOpts').addEventListener('click',e=>{if(e.target.classList.contains('rm')&&$$('#pollOpts .poll-opt').length>2)e.target.parentElement.remove()});
 $('#sendNow').addEventListener('change',e=>$('#whenRow').classList.toggle('now-mode',e.target.checked));
+$('#sendAt').addEventListener('input',()=>{if($('#sendAt').value){$('#sendNow').checked=false;$('#whenRow').classList.remove('now-mode')}});
 
 // ===== GROUPS =====
 async function loadGroups(){
@@ -259,7 +260,7 @@ $('#reloadGroups').addEventListener('click',loadGroups);
 // ===== SUBMIT (compose) =====
 $('#submitBtn').addEventListener('click',async()=>{
   const btn=$('#submitBtn');if(!selectedGroups.size)return toast('Selecione um grupo.',true);
-  const fd=new FormData();fd.append('type',currentType);fd.append('groupIds',JSON.stringify([...selectedGroups.keys()]));fd.append('groupNames',JSON.stringify([...selectedGroups.values()]));
+  const fd=new FormData();fd.append('timezoneOffset', String(new Date().getTimezoneOffset()));fd.append('type',currentType);fd.append('groupIds',JSON.stringify([...selectedGroups.keys()]));fd.append('groupNames',JSON.stringify([...selectedGroups.values()]));
   fd.append('mentionAll',$('#mentionAll').checked);fd.append('humanize',$('#humanize').checked);fd.append('repeat',$('#repeat').value);
   const now=$('#sendNow').checked;fd.append('sendNow',now);if(!now){if(!$('#sendAt').value)return toast('Escolha data/hora.',true);fd.append('sendAt',$('#sendAt').value)}
   if(currentType==='texto'){if(!$('#text').value.trim())return toast('Escreva a mensagem.',true);fd.append('text',$('#text').value)}
@@ -546,7 +547,7 @@ async function confirmLaunch(){
   if(!launchGroups.size)return toast('Selecione ao menos um grupo.',true);
   if(!launchSteps.length)return toast('Adicione ao menos uma etapa.',true);
   const startDate=$('#lStartDate')?.value;if(!startDate)return toast('Escolha a data de início.',true);
-  const body={startDate,groupIds:[...launchGroups.keys()],groupNames:[...launchGroups.values()],steps:launchSteps};
+  const body={startDate,timezoneOffset:new Date().getTimezoneOffset(),groupIds:[...launchGroups.keys()],groupNames:[...launchGroups.values()],steps:launchSteps};
   const r=await fetch(`/api/campaigns/${editingCampaign.id}/launch`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const d=await r.json();if(!r.ok)return toast(d.error,true);
   toast(`Campanha lançada! ${d.jobCount} mensagem(s) agendada(s).`);showCampList();
