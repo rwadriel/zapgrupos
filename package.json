@@ -1,0 +1,15 @@
+{
+  "name": "zapgrupos",
+  "version": "1.0.0",
+  "description": "Agendador local de mensagens para grupos do WhatsApp com simulação de envio humano (texto, mídia, áudio PTT, enquetes, menção geral).",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "multer": "^2.0.1",
+    "qrcode": "^1.5.3",
+    "whatsapp-web.js": "github:wwebjs/whatsapp-web.js#main"
+  }
+}

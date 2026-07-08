@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZapGrupos — agendador de grupos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;450;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{--ink:#0e1613;--paper:#f3f0e9;--panel:#fff;--line:#d8d3c7;--green:#1f7a54;--green-deep:#14503a;--green-soft:#e4efe8;--amber:#c67a1e;--amber-soft:#f6ead6;--red:#b23b3b;--red-soft:#f4e0df;--muted:#6d7671;--radius:14px;--shadow:0 1px 2px rgba(14,22,19,.05),0 8px 24px -12px rgba(14,22,19,.18)}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',system-ui,sans-serif;background:var(--paper);color:var(--ink);line-height:1.5;-webkit-font-smoothing:antialiased}
+  h1,h2,h3,.display{font-family:'Space Grotesk',sans-serif}
+  .shell{max-width:1080px;margin:0 auto;padding:28px 20px 80px}
+  header.top{display:flex;align-items:center;gap:16px;padding-bottom:22px;margin-bottom:26px;border-bottom:1.5px solid var(--line)}
+  .brand{display:flex;align-items:center;gap:12px}
+  .glyph{width:40px;height:40px;border-radius:11px;background:var(--green);color:#fff;display:grid;place-items:center;font-family:'Space Grotesk';font-weight:700;font-size:20px;box-shadow:var(--shadow)}
+  .brand h1{font-size:20px;letter-spacing:-.02em;font-weight:600}
+  .brand p{font-size:12.5px;color:var(--muted);margin-top:-2px}
+  .conn{margin-left:auto;display:flex;align-items:center;gap:10px;padding:7px 13px;background:var(--panel);border:1px solid var(--line);border-radius:999px;font-size:13px;font-weight:500}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
+  .dot.on{background:var(--green);box-shadow:0 0 0 3px var(--green-soft)}
+  .dot.wait{background:var(--amber);box-shadow:0 0 0 3px var(--amber-soft)}
+  .dot.off{background:var(--red);box-shadow:0 0 0 3px var(--red-soft)}
+  .tabs{display:flex;gap:4px;margin-bottom:22px;flex-wrap:wrap}
+  .tab{padding:9px 16px;border:none;background:none;cursor:pointer;font-family:'Space Grotesk';font-size:14px;font-weight:500;color:var(--muted);border-radius:9px}
+  .tab.active{background:var(--ink);color:var(--paper)}
+  .tab:hover:not(.active){background:rgba(14,22,19,.06)}
+  .view{display:none}.view.active{display:block}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:22px;box-shadow:var(--shadow)}
+  .panel+.panel{margin-top:18px}
+  .panel h2{font-size:15px;font-weight:600;letter-spacing:-.01em;margin-bottom:4px}
+  .panel .sub{font-size:13px;color:var(--muted);margin-bottom:18px}
+  label.field{display:block;margin-bottom:16px}
+  label.field>span{display:block;font-size:12.5px;font-weight:600;margin-bottom:6px;letter-spacing:.01em}
+  input[type=text],input[type=date],input[type=time],input[type=datetime-local],textarea,select{width:100%;padding:11px 13px;font:inherit;font-size:14px;background:var(--paper);border:1px solid var(--line);border-radius:10px;color:var(--ink);transition:border-color .15s,box-shadow .15s}
+  textarea{resize:vertical;min-height:92px}
+  input:focus,textarea:focus,select:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px var(--green-soft)}
+  .seg{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:18px}
+  .seg button{padding:12px 8px;border:1px solid var(--line);background:var(--paper);border-radius:10px;cursor:pointer;font:inherit;font-size:13px;font-weight:500;display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--muted)}
+  .seg button .ico{font-size:17px}
+  .seg button.active{border-color:var(--green);background:var(--green-soft);color:var(--green-deep);font-weight:600}
+  .type-block{display:none}.type-block.active{display:block}
+  .grouplist{max-height:280px;overflow-y:auto;border:1px solid var(--line);border-radius:10px}
+  .grow{display:flex;align-items:center;gap:11px;padding:10px 13px;border-bottom:1px solid var(--line);cursor:pointer;font-size:14px}
+  .grow:last-child{border-bottom:none}
+  .grow:hover{background:var(--paper)}
+  .grow input{width:17px;height:17px;accent-color:var(--green);cursor:pointer}
+  .grow .meta{margin-left:auto;font-size:12px;color:var(--muted)}
+  .grow .badge-admin{font-size:10.5px;font-weight:600;color:var(--green-deep);background:var(--green-soft);padding:2px 7px;border-radius:5px}
+  .grouptools{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+  .grouptools .count{margin-left:auto;font-size:12.5px;color:var(--muted)}
+  .link{font-size:12.5px;color:var(--green);cursor:pointer;font-weight:500}
+  .opts{display:grid;gap:2px;margin-top:6px}
+  .opt{display:flex;align-items:flex-start;gap:11px;padding:11px 0;border-top:1px solid var(--line)}
+  .opt:first-child{border-top:none}
+  .opt .txt{flex:1}.opt .txt b{font-size:13.5px;font-weight:600;display:block}
+  .opt .txt small{font-size:12px;color:var(--muted)}
+  .switch{position:relative;width:42px;height:24px;flex-shrink:0}
+  .switch input{opacity:0;width:0;height:0}
+  .slider{position:absolute;inset:0;background:var(--line);border-radius:999px;transition:.2s;cursor:pointer}
+  .slider::before{content:'';position:absolute;height:18px;width:18px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+  .switch input:checked+.slider{background:var(--green)}
+  .switch input:checked+.slider::before{transform:translateX(18px)}
+  .when{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .when.now-mode .at-field{opacity:.4;pointer-events:none}
+  .btn{padding:12px 20px;border:none;border-radius:10px;cursor:pointer;font:inherit;font-size:14px;font-weight:600;font-family:'Space Grotesk';display:inline-flex;align-items:center;gap:8px}
+  .btn-primary{background:var(--green);color:#fff}
+  .btn-primary:hover{background:var(--green-deep)}
+  .btn-primary:disabled{background:var(--line);color:var(--muted);cursor:not-allowed}
+  .btn-ghost{background:var(--paper);border:1px solid var(--line);color:var(--ink)}
+  .btn-ghost:hover{background:#fff}
+  .btn-danger{background:none;color:var(--red);padding:6px 10px;font-size:13px}
+  .btn-danger:hover{background:var(--red-soft)}
+  .btn-sm{padding:7px 14px;font-size:13px}
+  .actions{display:flex;gap:10px;margin-top:6px}
+  .job{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:12px;box-shadow:var(--shadow)}
+  .job-head{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+  .job-type{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:3px 9px;border-radius:6px;background:var(--green-soft);color:var(--green-deep)}
+  .job-when{font-family:'Space Grotesk';font-size:14px;font-weight:600}
+  .job-status{margin-left:auto;font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px}
+  .st-agendada{background:var(--amber-soft);color:var(--amber)}
+  .st-enviando{background:var(--green-soft);color:var(--green-deep)}
+  .st-enviada{background:var(--green-soft);color:var(--green-deep)}
+  .st-parcial{background:var(--amber-soft);color:var(--amber)}
+  .st-falhou,.st-cancelada{background:var(--red-soft);color:var(--red)}
+  .job-body{font-size:13.5px}.job-groups{font-size:12.5px;color:var(--muted);margin-top:6px}
+  .job-flags{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+  .flag{font-size:11px;padding:2px 8px;border-radius:6px;background:var(--paper);border:1px solid var(--line);color:var(--muted)}
+  .job-foot{display:flex;gap:6px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+  .qr-wrap{text-align:center;padding:10px 0}
+  .qr-wrap img{width:256px;height:256px;border-radius:12px;border:1px solid var(--line)}
+  .qr-steps{text-align:left;max-width:340px;margin:18px auto 0;font-size:13.5px;color:var(--muted)}
+  .qr-steps li{margin-bottom:6px}
+  .me-card{display:flex;align-items:center;gap:14px}
+  .me-avatar{width:48px;height:48px;border-radius:50%;background:var(--green);color:#fff;display:grid;place-items:center;font-family:'Space Grotesk';font-weight:700;font-size:20px}
+  .empty{text-align:center;padding:48px 20px;color:var(--muted)}
+  .empty .big{font-family:'Space Grotesk';font-size:15px;color:var(--ink);margin-bottom:4px}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--paper);padding:13px 22px;border-radius:11px;font-size:14px;font-weight:500;opacity:0;pointer-events:none;transition:.25s;box-shadow:0 10px 30px -8px rgba(0,0,0,.4);z-index:50;max-width:90vw}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.err{background:var(--red)}
+  .hint{font-size:12px;color:var(--muted);margin-top:6px}
+  .poll-opt{display:flex;gap:8px;margin-bottom:8px;align-items:center}
+  .poll-opt input{flex:1}.poll-opt .rm{color:var(--red);cursor:pointer;font-size:18px;width:24px;text-align:center}
+  .file-drop{border:1.5px dashed var(--line);border-radius:11px;padding:22px;text-align:center;cursor:pointer;color:var(--muted);font-size:13.5px;background:var(--paper)}
+  .file-drop:hover{border-color:var(--green);color:var(--green-deep)}
+  .file-drop.has{border-style:solid;border-color:var(--green);color:var(--green-deep);background:var(--green-soft)}
+  /* Campaign specific */
+  .camp-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-bottom:12px;box-shadow:var(--shadow)}
+  .camp-card h3{font-size:16px;font-weight:600;margin-bottom:2px}
+  .camp-card .desc{font-size:13px;color:var(--muted);margin-bottom:10px}
+  .camp-card .steps-summary{font-size:12.5px;color:var(--muted);margin-bottom:12px}
+  .camp-card .btns{display:flex;gap:8px;flex-wrap:wrap}
+  .step-card{background:var(--paper);border:1px solid var(--line);border-radius:11px;padding:16px;margin-bottom:10px;position:relative}
+  .step-card .step-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .step-card .step-num{width:28px;height:28px;border-radius:50%;background:var(--green);color:#fff;display:grid;place-items:center;font-family:'Space Grotesk';font-weight:700;font-size:13px;flex-shrink:0}
+  .step-card .step-when{font-family:'Space Grotesk';font-size:13px;font-weight:600;color:var(--green-deep)}
+  .step-card .step-type-badge{font-size:11px;font-weight:600;text-transform:uppercase;padding:2px 8px;border-radius:5px;background:var(--green-soft);color:var(--green-deep)}
+  .step-card .step-rm{margin-left:auto;color:var(--red);cursor:pointer;font-size:18px;padding:4px 8px}
+  .step-content{font-size:13.5px;color:var(--ink)}
+  .step-content .file-name{color:var(--muted);font-size:12.5px}
+  .inline-grid{display:grid;grid-template-columns:80px 100px 1fr;gap:10px;align-items:end}
+  .inline-grid.four{grid-template-columns:80px 100px 140px 1fr}
+  .launch-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:12px;box-shadow:var(--shadow)}
+  .launch-head{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+  .launch-name{font-family:'Space Grotesk';font-size:15px;font-weight:600}
+  .launch-date{font-size:13px;color:var(--muted)}
+  .launch-detail{font-size:12.5px;color:var(--muted)}
+  @media(max-width:640px){.seg{grid-template-columns:repeat(2,1fr)}.when{grid-template-columns:1fr}.brand p{display:none}.inline-grid,.inline-grid.four{grid-template-columns:1fr 1fr}}
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <header class="top">
+    <div class="brand"><div class="glyph">Z</div><div><h1>ZapGrupos</h1><p>Agendador de mensagens para grupos</p></div></div>
+    <div class="conn" id="conn"><span class="dot" id="connDot"></span><span id="connText">verificando…</span></div>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" data-view="compose">Nova mensagem</button>
+    <button class="tab" data-view="campaigns">Campanhas</button>
+    <button class="tab" data-view="queue">Fila <span id="queueCount"></span></button>
+    <button class="tab" data-view="conn">Conexão</button>
+  </div>
+
+  <!-- ===== COMPOSE (unchanged) ===== -->
+  <section class="view active" id="view-compose">
+    <div class="panel">
+      <h2>Conteúdo</h2><p class="sub">O áudio vai como nota de voz. Escolha o tipo e preencha.</p>
+      <div class="seg" id="typeSeg">
+        <button data-type="texto" class="active"><span class="ico">✍️</span>Texto</button>
+        <button data-type="midia"><span class="ico">🖼️</span>Foto / vídeo</button>
+        <button data-type="audio"><span class="ico">🎙️</span>Áudio</button>
+        <button data-type="enquete"><span class="ico">📊</span>Enquete</button>
+      </div>
+      <div class="type-block active" data-block="texto"><label class="field"><span>Mensagem</span><textarea id="text" placeholder="Escreva sua mensagem…"></textarea></label></div>
+      <div class="type-block" data-block="midia">
+        <div class="file-drop" id="mediaDrop"><span id="mediaDropText">Clique para escolher uma foto ou vídeo</span><input type="file" id="mediaFile" accept="image/*,video/*" hidden></div>
+        <label class="field" style="margin-top:16px"><span>Legenda (opcional)</span><textarea id="caption" placeholder="Texto que acompanha a mídia…" style="min-height:64px"></textarea></label>
+      </div>
+      <div class="type-block" data-block="audio">
+        <div class="file-drop" id="audioDrop"><span id="audioDropText">Clique para escolher um áudio</span><input type="file" id="audioFile" accept="audio/*" hidden></div>
+        <p class="hint">Vai como nota de voz. Antes de enviar, o grupo vê "gravando áudio…".</p>
+      </div>
+      <div class="type-block" data-block="enquete">
+        <label class="field"><span>Pergunta</span><input type="text" id="pollQuestion" placeholder="Ex: Qual horário da live?"></label>
+        <span style="display:block;font-size:12.5px;font-weight:600;margin-bottom:6px">Opções</span>
+        <div id="pollOpts"><div class="poll-opt"><input type="text" placeholder="Opção 1"><span class="rm">×</span></div><div class="poll-opt"><input type="text" placeholder="Opção 2"><span class="rm">×</span></div></div>
+        <span class="link" id="addPollOpt" style="display:inline-block;margin-top:4px">+ adicionar opção</span>
+        <label class="opt" style="margin-top:12px"><div class="switch"><input type="checkbox" id="allowMultiple"><span class="slider"></span></div><div class="txt"><b>Permitir múltiplas respostas</b></div></label>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Grupos</h2><p class="sub">Marque os grupos. Envio um por vez, com pausa entre eles.</p>
+      <div class="grouptools"><span class="link" id="selAll">selecionar todos</span><span class="link" id="selNone">limpar</span><span class="link" id="reloadGroups">recarregar</span><span class="count" id="groupCount">0 selecionados</span></div>
+      <div class="grouplist" id="groupList"><div class="empty" style="padding:28px"><span class="big">Conecte o WhatsApp primeiro</span></div></div>
+    </div>
+    <div class="panel"><h2>Simulação e menção</h2><div class="opts">
+      <label class="opt"><div class="switch"><input type="checkbox" id="humanize" checked><span class="slider"></span></div><div class="txt"><b>Simular envio manual</b><small>Mostra "digitando…"/"gravando…" antes de enviar.</small></div></label>
+      <label class="opt"><div class="switch"><input type="checkbox" id="mentionAll"><span class="slider"></span></div><div class="txt"><b>Mencionar todos</b><small>Notifica o grupo inteiro.</small></div></label>
+    </div></div>
+    <div class="panel"><h2>Quando enviar</h2>
+      <div class="opts" style="margin-bottom:16px"><label class="opt"><div class="switch"><input type="checkbox" id="sendNow"><span class="slider"></span></div><div class="txt"><b>Enviar agora</b></div></label></div>
+      <div class="when" id="whenRow">
+        <label class="field at-field"><span>Data e hora</span><input type="datetime-local" id="sendAt"></label>
+        <label class="field"><span>Repetir</span><select id="repeat"><option value="nenhuma">Não repetir</option><option value="diaria">Diária</option><option value="semanal">Semanal</option></select></label>
+      </div>
+      <div class="actions"><button class="btn btn-primary" id="submitBtn">Agendar mensagem</button></div>
+    </div>
+  </section>
+
+  <!-- ===== CAMPAIGNS ===== -->
+  <section class="view" id="view-campaigns">
+    <!-- Sub-views managed by JS -->
+    <div id="camp-list"></div>
+    <div id="camp-edit" style="display:none"></div>
+    <div id="camp-launch" style="display:none"></div>
+    <div id="camp-history" style="display:none"></div>
+  </section>
+
+  <!-- ===== QUEUE ===== -->
+  <section class="view" id="view-queue"><div id="queueList"></div></section>
+
+  <!-- ===== CONNECTION ===== -->
+  <section class="view" id="view-conn"><div class="panel" id="connPanel"><div class="empty"><span class="big">Carregando…</span></div></div></section>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+let selectedGroups=new Map(),currentType='texto',groupsCache=[];
+const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function toast(m,e=false){const t=$('#toast');t.textContent=m;t.className='toast show'+(e?' err':'');setTimeout(()=>t.className='toast',3200)}
+const TYPE_LABELS={texto:'Texto',midia:'Foto/vídeo',audio:'Áudio',enquete:'Enquete'};
+const TYPE_ICONS={texto:'✍️',midia:'🖼️',audio:'🎙️',enquete:'📊'};
+
+// ===== TABS =====
+$$('.tab').forEach(tab=>tab.addEventListener('click',()=>{
+  $$('.tab').forEach(t=>t.classList.remove('active'));$$('.view').forEach(v=>v.classList.remove('active'));
+  tab.classList.add('active');$('#view-'+tab.dataset.view).classList.add('active');
+  if(tab.dataset.view==='queue')loadQueue();
+  if(tab.dataset.view==='conn')loadConn();
+  if(tab.dataset.view==='campaigns')showCampList();
+}));
+
+// ===== COMPOSE (same logic) =====
+$$('#typeSeg button').forEach(b=>b.addEventListener('click',()=>{
+  $$('#typeSeg button').forEach(x=>x.classList.remove('active'));b.classList.add('active');
+  currentType=b.dataset.type;$$('.type-block').forEach(tb=>tb.classList.toggle('active',tb.dataset.block===currentType));
+}));
+function wireDrop(d,i,t,l){const drop=$(d),inp=$(i),txt=$(t);drop.addEventListener('click',()=>inp.click());inp.addEventListener('change',()=>{if(inp.files[0]){drop.classList.add('has');txt.textContent='✓ '+inp.files[0].name}else{drop.classList.remove('has');txt.textContent=l}})}
+wireDrop('#mediaDrop','#mediaFile','#mediaDropText','Clique para escolher foto ou vídeo');
+wireDrop('#audioDrop','#audioFile','#audioDropText','Clique para escolher áudio');
+$('#addPollOpt').addEventListener('click',()=>{const n=$$('#pollOpts .poll-opt').length+1;if(n>12)return toast('Máximo 12 opções.',true);const d=document.createElement('div');d.className='poll-opt';d.innerHTML=`<input type="text" placeholder="Opção ${n}"><span class="rm">×</span>`;$('#pollOpts').appendChild(d)});
+$('#pollOpts').addEventListener('click',e=>{if(e.target.classList.contains('rm')&&$$('#pollOpts .poll-opt').length>2)e.target.parentElement.remove()});
+$('#sendNow').addEventListener('change',e=>$('#whenRow').classList.toggle('now-mode',e.target.checked));
+
+// ===== GROUPS =====
+async function loadGroups(){
+  const list=$('#groupList');
+  try{
+    const groups=await fetch('/api/groups').then(r=>r.json());
+    groupsCache=Array.isArray(groups)?groups:[];
+    if(!groupsCache.length){list.innerHTML='<div class="empty" style="padding:28px"><span class="big">Nenhum grupo</span>Conecte o WhatsApp e recarregue.</div>';return}
+    list.innerHTML='';
+    groupsCache.forEach(g=>{const row=document.createElement('label');row.className='grow';
+      row.innerHTML=`<input type="checkbox" value="${g.id}" ${selectedGroups.has(g.id)?'checked':''}><span>${esc(g.name)}</span>${g.isAdmin?'<span class="badge-admin">admin</span>':''}<span class="meta">${g.participants??'?'}</span>`;
+      row.querySelector('input').addEventListener('change',function(){if(this.checked)selectedGroups.set(g.id,g.name);else selectedGroups.delete(g.id);updGC()});list.appendChild(row)});updGC()
+  }catch{list.innerHTML='<div class="empty" style="padding:28px">Erro ao carregar.</div>'}
+}
+function updGC(){$('#groupCount').textContent=selectedGroups.size+' selecionado'+(selectedGroups.size===1?'':'s')}
+$('#selAll').addEventListener('click',()=>$$('#groupList input[type=checkbox]').forEach(c=>{c.checked=true;c.dispatchEvent(new Event('change'))}));
+$('#selNone').addEventListener('click',()=>$$('#groupList input[type=checkbox]').forEach(c=>{c.checked=false;c.dispatchEvent(new Event('change'))}));
+$('#reloadGroups').addEventListener('click',loadGroups);
+
+// ===== SUBMIT (compose) =====
+$('#submitBtn').addEventListener('click',async()=>{
+  const btn=$('#submitBtn');if(!selectedGroups.size)return toast('Selecione um grupo.',true);
+  const fd=new FormData();fd.append('type',currentType);fd.append('groupIds',JSON.stringify([...selectedGroups.keys()]));fd.append('groupNames',JSON.stringify([...selectedGroups.values()]));
+  fd.append('mentionAll',$('#mentionAll').checked);fd.append('humanize',$('#humanize').checked);fd.append('repeat',$('#repeat').value);
+  const now=$('#sendNow').checked;fd.append('sendNow',now);if(!now){if(!$('#sendAt').value)return toast('Escolha data/hora.',true);fd.append('sendAt',$('#sendAt').value)}
+  if(currentType==='texto'){if(!$('#text').value.trim())return toast('Escreva a mensagem.',true);fd.append('text',$('#text').value)}
+  else if(currentType==='midia'){if(!$('#mediaFile').files[0])return toast('Escolha foto/vídeo.',true);fd.append('file',$('#mediaFile').files[0]);fd.append('caption',$('#caption').value)}
+  else if(currentType==='audio'){if(!$('#audioFile').files[0])return toast('Escolha áudio.',true);fd.append('file',$('#audioFile').files[0])}
+  else if(currentType==='enquete'){if(!$('#pollQuestion').value.trim())return toast('Escreva a pergunta.',true);const opts=$$('#pollOpts input').map(i=>i.value.trim()).filter(Boolean);if(opts.length<2)return toast('Mínimo 2 opções.',true);fd.append('pollQuestion',$('#pollQuestion').value);fd.append('pollOptions',JSON.stringify(opts));fd.append('allowMultiple',$('#allowMultiple').checked)}
+  btn.disabled=true;btn.textContent='Enviando…';
+  try{const r=await fetch('/api/jobs',{method:'POST',body:fd});const d=await r.json();if(!r.ok)throw new Error(d.error);toast(now?'Disparo iniciado.':'Agendada.')}catch(e){toast(e.message,true)}
+  finally{btn.disabled=false;btn.textContent='Agendar mensagem'}
+});
+
+// ===== QUEUE =====
+async function loadQueue(){
+  const w=$('#queueList');
+  try{const jobs=await fetch('/api/jobs').then(r=>r.json());
+    const p=jobs.filter(j=>j.status==='agendada').length;$('#queueCount').textContent=p?`(${p})`:'';
+    if(!jobs.length){w.innerHTML='<div class="empty"><span class="big">Nada na fila</span></div>';return}
+    w.innerHTML='';jobs.slice().reverse().forEach(j=>w.appendChild(renderJob(j)))}catch{w.innerHTML='<div class="empty">Erro.</div>'}
+}
+function renderJob(j){
+  const el=document.createElement('div');el.className='job';
+  const when=new Date(j.sendAt).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'});
+  let body='';if(j.type==='texto')body=esc(j.text||'');else if(j.type==='midia')body='📎 '+esc(j.fileName||'mídia')+(j.caption?' — '+esc(j.caption):'');else if(j.type==='audio')body='🎙️ '+esc(j.fileName||'áudio')+' (nota de voz)';else if(j.type==='enquete')body='📊 '+esc(j.pollQuestion||'')+' — '+(j.pollOptions||[]).length+' opções';
+  const flags=[];if(j.humanize)flags.push('simulado');if(j.mentionAll)flags.push('menciona todos');if(j.campaignName)flags.push('campanha: '+j.campaignName);
+  const done=(j.results||[]).filter(r=>r.ok).length,total=(j.groupIds||[]).length;
+  const rs=(j.status==='enviada'||j.status==='parcial'||j.status==='falhou')?' · '+done+'/'+total+' entregues':'';
+  const sl={agendada:'Agendada',enviando:'Enviando…',enviada:'Enviada',parcial:'Parcial',falhou:'Falhou',cancelada:'Cancelada'};
+  el.innerHTML=`<div class="job-head"><span class="job-type">${TYPE_LABELS[j.type]||j.type}</span><span class="job-when">${when}</span><span class="job-status st-${j.status}">${sl[j.status]||j.status}${rs}</span></div>
+    <div class="job-body">${body}</div><div class="job-groups">→ ${(j.groupNames||[]).map(esc).join(', ')}</div>
+    <div class="job-flags">${flags.map(f=>`<span class="flag">${f}</span>`).join('')}</div>
+    <div class="job-foot">${j.status==='agendada'?'<button class="btn btn-ghost btn-sm" data-act="send">Enviar agora</button>':''}${(j.status==='falhou'||j.status==='parcial')?'<button class="btn btn-ghost btn-sm" data-act="send">Reenviar</button>':''}${j.status==='agendada'?'<button class="btn btn-danger" data-act="cancel">Cancelar</button>':''}<button class="btn btn-danger" data-act="del" style="margin-left:auto">Excluir</button></div>`;
+  el.querySelectorAll('[data-act]').forEach(b=>b.addEventListener('click',async()=>{
+    if(b.dataset.act==='send'){await fetch(`/api/jobs/${j.id}/send-now`,{method:'POST'});toast('Iniciado.')}
+    if(b.dataset.act==='cancel'){await fetch(`/api/jobs/${j.id}/cancel`,{method:'POST'});toast('Cancelado.')}
+    if(b.dataset.act==='del'){await fetch(`/api/jobs/${j.id}`,{method:'DELETE'});toast('Excluído.')}
+    loadQueue()}));return el}
+
+// ===== CONNECTION =====
+async function pollStatus(){
+  try{const s=await fetch('/api/status').then(r=>r.json());
+    const dot=$('#connDot'),txt=$('#connText');dot.className='dot';
+    if(s.status==='conectado'){dot.classList.add('on');txt.textContent=s.me?s.me.name:'conectado'}
+    else if(s.status==='aguardando_qr'){dot.classList.add('wait');txt.textContent='escaneie o QR'}
+    else if(s.status==='autenticando'||s.status==='iniciando'){dot.classList.add('wait');txt.textContent='conectando…'}
+    else{dot.classList.add('off');txt.textContent='desconectado'}
+    if(s.status==='conectado'&&$('#groupList .empty'))loadGroups();
+    if($('#view-conn').classList.contains('active'))renderConn(s);window._ls=s}catch{}}
+function loadConn(){if(window._ls)renderConn(window._ls);pollStatus()}
+function renderConn(s){
+  const p=$('#connPanel');
+  if(s.status==='conectado'&&s.me){p.innerHTML=`<h2>Conectado</h2><p class="sub">Conta pronta.</p><div class="me-card"><div class="me-avatar">${(s.me.name||'?')[0].toUpperCase()}</div><div><b style="font-family:'Space Grotesk';font-size:16px">${esc(s.me.name)}</b><br><span style="color:var(--muted);font-size:13px">+${esc(s.me.number)}</span></div><button class="btn btn-ghost" id="logoutBtn" style="margin-left:auto">Desconectar</button></div>`;$('#logoutBtn').addEventListener('click',async()=>{if(!confirm('Desconectar?'))return;await fetch('/api/logout',{method:'POST'});toast('Desconectado.');pollStatus()})}
+  else if(s.status==='aguardando_qr'&&s.qr){p.innerHTML=`<h2>Conectar WhatsApp</h2><p class="sub">Escaneie o código.</p><div class="qr-wrap"><img src="${s.qr}"><ol class="qr-steps"><li>1. Abra o WhatsApp</li><li>2. Aparelhos conectados</li><li>3. Conectar um aparelho</li><li>4. Aponte a câmera aqui</li></ol></div>`}
+  else{p.innerHTML=`<h2>${s.status==='desconectado'?'Desconectado':'Conectando…'}</h2><p class="sub">${s.status==='desconectado'?(s.lastError?esc(s.lastError):'Aguardando.'):'QR aparecerá em instantes.'}</p>`}}
+
+// ========================================================================
+// ===== CAMPAIGNS =====
+// ========================================================================
+let campSubView='list'; // list | edit | launch | history
+let editingCampaign=null; // campaign being edited/viewed
+let launchSteps=[]; // editable copy for launch review
+let launchGroups=new Map();
+
+function showCampList(){campSubView='list';$('#camp-edit').style.display='none';$('#camp-launch').style.display='none';$('#camp-history').style.display='none';$('#camp-list').style.display='block';renderCampList()}
+
+async function renderCampList(){
+  const w=$('#camp-list');
+  try{
+    const [camps,launches]=await Promise.all([fetch('/api/campaigns').then(r=>r.json()),fetch('/api/launches').then(r=>r.json())]);
+    let html=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:18px"><h2 style="font-size:18px">Campanhas</h2><button class="btn btn-primary btn-sm" id="newCampBtn">+ Nova campanha</button><button class="btn btn-ghost btn-sm" id="historyBtn" style="margin-left:auto">Histórico (${launches.length})</button></div>`;
+    if(!camps.length)html+=`<div class="empty"><span class="big">Nenhuma campanha criada</span>Crie uma sequência de mensagens reutilizável.</div>`;
+    else camps.forEach(c=>{
+      const days=c.steps.length?Math.max(...c.steps.map(s=>s.dayOffset))+1:0;
+      html+=`<div class="camp-card"><h3>${esc(c.name)}</h3>${c.description?`<div class="desc">${esc(c.description)}</div>`:''}
+        <div class="steps-summary">${c.steps.length} etapa(s) · ${days} dia(s)</div>
+        <div class="btns"><button class="btn btn-primary btn-sm" data-launch="${c.id}">Lançar</button><button class="btn btn-ghost btn-sm" data-edit="${c.id}">Editar</button><button class="btn btn-danger" data-del="${c.id}">Excluir</button></div></div>`});
+    w.innerHTML=html;
+    w.querySelector('#newCampBtn')?.addEventListener('click',()=>openCampEdit(null));
+    w.querySelector('#historyBtn')?.addEventListener('click',showHistory);
+    w.querySelectorAll('[data-launch]').forEach(b=>b.addEventListener('click',()=>openCampLaunch(b.dataset.launch)));
+    w.querySelectorAll('[data-edit]').forEach(b=>b.addEventListener('click',()=>openCampEdit(b.dataset.edit)));
+    w.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',async()=>{if(!confirm('Excluir esta campanha?'))return;await fetch(`/api/campaigns/${b.dataset.del}`,{method:'DELETE'});toast('Excluída.');renderCampList()}));
+  }catch{w.innerHTML='<div class="empty">Erro ao carregar.</div>'}
+}
+
+// ===== CAMPAIGN EDIT =====
+async function openCampEdit(id){
+  campSubView='edit';$('#camp-list').style.display='none';$('#camp-launch').style.display='none';$('#camp-history').style.display='none';$('#camp-edit').style.display='block';
+  if(id){editingCampaign=await fetch(`/api/campaigns`).then(r=>r.json()).then(arr=>arr.find(c=>c.id===id))}else{editingCampaign=null}
+  renderCampEdit();
+}
+
+function renderCampEdit(){
+  const w=$('#camp-edit');const c=editingCampaign;
+  let html=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:18px"><button class="btn btn-ghost btn-sm" id="backFromEdit">← Voltar</button><h2 style="font-size:18px">${c?'Editar campanha':'Nova campanha'}</h2></div>`;
+  html+=`<div class="panel"><label class="field"><span>Nome da campanha</span><input type="text" id="campName" value="${esc(c?.name||'')}" placeholder="Ex: Meteórico Semana"></label>
+    <label class="field"><span>Descrição (opcional)</span><input type="text" id="campDesc" value="${esc(c?.description||'')}" placeholder="Sequência de 3 dias..."></label>
+    <div class="actions"><button class="btn btn-primary" id="saveCampBtn">${c?'Salvar':'Criar campanha'}</button></div></div>`;
+
+  if(c){
+    html+=`<div class="panel" style="margin-top:18px"><h2>Etapas da campanha</h2><p class="sub">Cada etapa é uma mensagem. Dia 1 = primeiro dia do lançamento.</p>`;
+    if(c.steps.length){c.steps.sort((a,b)=>a.dayOffset===b.dayOffset?a.time.localeCompare(b.time):a.dayOffset-b.dayOffset);
+      c.steps.forEach((s,i)=>{html+=renderStepCard(s,i+1,c.id,false)})}
+    else html+=`<div class="empty" style="padding:20px"><span class="big">Nenhuma etapa</span></div>`;
+    html+=`<div style="margin-top:14px"><button class="btn btn-ghost btn-sm" id="addStepBtn">+ Adicionar etapa</button></div></div>`;
+  }
+  w.innerHTML=html;
+  w.querySelector('#backFromEdit')?.addEventListener('click',showCampList);
+  w.querySelector('#saveCampBtn')?.addEventListener('click',saveCamp);
+  w.querySelector('#addStepBtn')?.addEventListener('click',()=>openStepForm(c.id,null));
+  w.querySelectorAll('[data-editstep]').forEach(b=>b.addEventListener('click',()=>{const s=c.steps.find(x=>x.id===b.dataset.editstep);openStepForm(c.id,s)}));
+  w.querySelectorAll('[data-delstep]').forEach(b=>b.addEventListener('click',async()=>{await fetch(`/api/campaigns/${c.id}/steps/${b.dataset.delstep}`,{method:'DELETE'});editingCampaign=await fetch('/api/campaigns').then(r=>r.json()).then(a=>a.find(x=>x.id===c.id));renderCampEdit();toast('Etapa removida.')}));
+}
+
+function renderStepCard(s,num,campId,isLaunch){
+  let body='';
+  if(s.type==='texto')body=`<div class="step-content">${esc((s.text||'').substring(0,120))}${(s.text||'').length>120?'…':''}</div>`;
+  else if(s.type==='midia')body=`<div class="step-content">📎 <span class="file-name">${esc(s.fileName||'mídia')}</span>${s.caption?' — '+esc(s.caption.substring(0,60)):''}</div>`;
+  else if(s.type==='audio')body=`<div class="step-content">🎙️ <span class="file-name">${esc(s.fileName||'áudio')}</span> (nota de voz)</div>`;
+  else if(s.type==='enquete')body=`<div class="step-content">📊 ${esc(s.pollQuestion||'')} · ${(s.pollOptions||[]).length} opções</div>`;
+  const flags=[];if(s.mentionAll)flags.push('menciona todos');if(s.humanize!==false)flags.push('simulado');
+  return `<div class="step-card"><div class="step-head"><span class="step-num">${num}</span><span class="step-when">Dia ${s.dayOffset+1}, ${s.time}</span><span class="step-type-badge">${TYPE_ICONS[s.type]||''} ${TYPE_LABELS[s.type]||s.type}</span>${isLaunch?`<span class="step-rm" data-launch-del="${s.id}">×</span>`:`<span class="step-rm" data-delstep="${s.id}">×</span>`}</div>${body}<div class="job-flags" style="margin-top:6px">${flags.map(f=>`<span class="flag">${f}</span>`).join('')}</div>${isLaunch?`<button class="btn btn-ghost btn-sm" data-launch-edit="${s.id}" style="margin-top:8px">Editar conteúdo</button>`:`<button class="btn btn-ghost btn-sm" data-editstep="${s.id}" style="margin-top:8px">Editar</button>`}</div>`;
+}
+
+async function saveCamp(){
+  const name=$('#campName').value.trim();if(!name)return toast('Dê um nome.',true);
+  const desc=$('#campDesc').value.trim();
+  if(editingCampaign){
+    await fetch(`/api/campaigns/${editingCampaign.id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,description:desc})});
+    editingCampaign.name=name;editingCampaign.description=desc;toast('Salvo.');renderCampEdit();
+  }else{
+    const r=await fetch('/api/campaigns',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,description:desc})});
+    const c=await r.json();if(!r.ok)return toast(c.error,true);editingCampaign=c;toast('Campanha criada. Adicione etapas.');renderCampEdit();
+  }
+}
+
+function openStepForm(campId,step){
+  const isNew=!step;const s=step||{dayOffset:0,time:'09:00',type:'texto',text:'',caption:'',mentionAll:false,humanize:true,pollQuestion:'',pollOptions:['',''],allowMultiple:false};
+  const modal=document.createElement('div');modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:40;display:grid;place-items:center;padding:20px';
+  modal.innerHTML=`<div class="panel" style="max-width:520px;width:100%;max-height:90vh;overflow-y:auto">
+    <h2>${isNew?'Nova etapa':'Editar etapa'}</h2>
+    <div class="inline-grid" style="margin:16px 0"><label class="field" style="margin:0"><span>Dia</span><select id="sf-day">${[...Array(14)].map((_,i)=>`<option value="${i}" ${s.dayOffset===i?'selected':''}>Dia ${i+1}</option>`).join('')}</select></label>
+    <label class="field" style="margin:0"><span>Horário</span><input type="time" id="sf-time" value="${s.time||'09:00'}"></label>
+    <label class="field" style="margin:0"><span>Tipo</span><select id="sf-type"><option value="texto" ${s.type==='texto'?'selected':''}>Texto</option><option value="midia" ${s.type==='midia'?'selected':''}>Foto/vídeo</option><option value="audio" ${s.type==='audio'?'selected':''}>Áudio</option><option value="enquete" ${s.type==='enquete'?'selected':''}>Enquete</option></select></label></div>
+    <div id="sf-fields"></div>
+    <label class="opt" style="margin-top:8px"><div class="switch"><input type="checkbox" id="sf-mention" ${s.mentionAll?'checked':''}><span class="slider"></span></div><div class="txt"><b>Mencionar todos</b></div></label>
+    <label class="opt"><div class="switch"><input type="checkbox" id="sf-humanize" ${s.humanize!==false?'checked':''}><span class="slider"></span></div><div class="txt"><b>Simular envio</b></div></label>
+    <div class="actions" style="margin-top:16px"><button class="btn btn-primary" id="sf-save">${isNew?'Adicionar':'Salvar'}</button><button class="btn btn-ghost" id="sf-cancel">Cancelar</button></div></div>`;
+  document.body.appendChild(modal);
+
+  function renderFields(){
+    const t=modal.querySelector('#sf-type').value;let h='';
+    if(t==='texto')h=`<label class="field"><span>Mensagem</span><textarea id="sf-text" style="min-height:80px">${esc(s.type===t?s.text:'')}</textarea></label>`;
+    else if(t==='midia')h=`<div class="file-drop" id="sf-media-drop"><span>${s.fileName?'✓ '+esc(s.fileName):'Clique para escolher foto/vídeo'}</span><input type="file" id="sf-media-file" accept="image/*,video/*" hidden></div><label class="field" style="margin-top:12px"><span>Legenda</span><textarea id="sf-caption" style="min-height:50px">${esc(s.type===t?s.caption:'')}</textarea></label>`;
+    else if(t==='audio')h=`<div class="file-drop" id="sf-audio-drop"><span>${s.fileName?'✓ '+esc(s.fileName):'Clique para escolher áudio'}</span><input type="file" id="sf-audio-file" accept="audio/*" hidden></div>`;
+    else if(t==='enquete'){const opts=s.type===t&&s.pollOptions?.length?s.pollOptions:['',''];
+      h=`<label class="field"><span>Pergunta</span><input type="text" id="sf-pollq" value="${esc(s.type===t?s.pollQuestion:'')}"></label><span style="font-size:12.5px;font-weight:600;display:block;margin-bottom:6px">Opções</span><div id="sf-pollopts">${opts.map((o,i)=>`<div class="poll-opt"><input type="text" value="${esc(o)}" placeholder="Opção ${i+1}"><span class="rm">×</span></div>`).join('')}</div><span class="link" id="sf-addopt" style="display:inline-block;margin-top:4px">+ opção</span>
+      <label class="opt" style="margin-top:8px"><div class="switch"><input type="checkbox" id="sf-multi" ${s.allowMultiple?'checked':''}><span class="slider"></span></div><div class="txt"><b>Múltiplas respostas</b></div></label>`}
+    modal.querySelector('#sf-fields').innerHTML=h;
+    // wire file drops
+    const md=modal.querySelector('#sf-media-drop'),mf=modal.querySelector('#sf-media-file');
+    if(md&&mf){md.addEventListener('click',()=>mf.click());mf.addEventListener('change',()=>{if(mf.files[0])md.querySelector('span').textContent='✓ '+mf.files[0].name})}
+    const ad=modal.querySelector('#sf-audio-drop'),af=modal.querySelector('#sf-audio-file');
+    if(ad&&af){ad.addEventListener('click',()=>af.click());af.addEventListener('change',()=>{if(af.files[0])ad.querySelector('span').textContent='✓ '+af.files[0].name})}
+    modal.querySelector('#sf-addopt')?.addEventListener('click',()=>{const d=document.createElement('div');d.className='poll-opt';d.innerHTML=`<input type="text" placeholder="Opção"><span class="rm">×</span>`;modal.querySelector('#sf-pollopts').appendChild(d)});
+    modal.querySelector('#sf-pollopts')?.addEventListener('click',e=>{if(e.target.classList.contains('rm')){const all=modal.querySelectorAll('#sf-pollopts .poll-opt');if(all.length>2)e.target.parentElement.remove()}});
+  }
+  modal.querySelector('#sf-type').addEventListener('change',renderFields);renderFields();
+  modal.querySelector('#sf-cancel').addEventListener('click',()=>modal.remove());
+  modal.querySelector('#sf-save').addEventListener('click',async()=>{
+    const t=modal.querySelector('#sf-type').value;
+    const fd=new FormData();fd.append('dayOffset',modal.querySelector('#sf-day').value);fd.append('time',modal.querySelector('#sf-time').value);fd.append('type',t);
+    fd.append('mentionAll',modal.querySelector('#sf-mention').checked);fd.append('humanize',modal.querySelector('#sf-humanize').checked);
+    if(t==='texto'){const tx=modal.querySelector('#sf-text')?.value;if(!tx?.trim())return toast('Escreva o texto.',true);fd.append('text',tx)}
+    else if(t==='midia'){const f=modal.querySelector('#sf-media-file')?.files[0];if(f)fd.append('file',f);else if(isNew)return toast('Escolha arquivo.',true);fd.append('caption',modal.querySelector('#sf-caption')?.value||'')}
+    else if(t==='audio'){const f=modal.querySelector('#sf-audio-file')?.files[0];if(f)fd.append('file',f);else if(isNew)return toast('Escolha áudio.',true)}
+    else if(t==='enquete'){const q=modal.querySelector('#sf-pollq')?.value;if(!q?.trim())return toast('Escreva a pergunta.',true);fd.append('pollQuestion',q);const opts=[...modal.querySelectorAll('#sf-pollopts input')].map(i=>i.value.trim()).filter(Boolean);if(opts.length<2)return toast('Mínimo 2 opções.',true);fd.append('pollOptions',JSON.stringify(opts));fd.append('allowMultiple',modal.querySelector('#sf-multi')?.checked||false)}
+    const url=isNew?`/api/campaigns/${campId}/steps`:`/api/campaigns/${campId}/steps/${step.id}`;
+    const r=await fetch(url,{method:isNew?'POST':'PUT',body:fd});const d=await r.json();if(!r.ok)return toast(d.error,true);
+    modal.remove();editingCampaign=await fetch('/api/campaigns').then(r=>r.json()).then(a=>a.find(x=>x.id===campId));renderCampEdit();toast(isNew?'Etapa adicionada.':'Etapa salva.');
+  });
+}
+
+// ===== CAMPAIGN LAUNCH (review screen) =====
+async function openCampLaunch(campId){
+  campSubView='launch';$('#camp-list').style.display='none';$('#camp-edit').style.display='none';$('#camp-history').style.display='none';$('#camp-launch').style.display='block';
+  const c=await fetch('/api/campaigns').then(r=>r.json()).then(a=>a.find(x=>x.id===campId));
+  if(!c)return toast('Campanha não encontrada.',true);
+  editingCampaign=c;launchSteps=JSON.parse(JSON.stringify(c.steps));launchGroups=new Map();
+  renderLaunch();
+}
+
+function renderLaunch(){
+  const w=$('#camp-launch');const c=editingCampaign;
+  launchSteps.sort((a,b)=>a.dayOffset===b.dayOffset?a.time.localeCompare(b.time):a.dayOffset-b.dayOffset);
+
+  let html=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:18px"><button class="btn btn-ghost btn-sm" id="backFromLaunch">← Voltar</button><h2 style="font-size:18px">Lançar: ${esc(c.name)}</h2></div>`;
+
+  // Groups
+  html+=`<div class="panel"><h2>Grupos</h2><p class="sub">Escolha os grupos para este lançamento.</p>
+    <div class="grouptools"><span class="link" id="lSelAll">selecionar todos</span><span class="link" id="lSelNone">limpar</span><span class="count" id="lGroupCount">${launchGroups.size} selecionado(s)</span></div>
+    <div class="grouplist" id="lGroupList">`;
+  if(!groupsCache.length)html+=`<div class="empty" style="padding:20px">Conecte o WhatsApp primeiro.</div>`;
+  else groupsCache.forEach(g=>{html+=`<label class="grow"><input type="checkbox" value="${g.id}" ${launchGroups.has(g.id)?'checked':''}><span>${esc(g.name)}</span>${g.isAdmin?'<span class="badge-admin">admin</span>':''}<span class="meta">${g.participants??'?'}</span></label>`});
+  html+=`</div></div>`;
+
+  // Start date
+  html+=`<div class="panel"><h2>Data de início</h2><p class="sub">Qual dia é o "Dia 1" desta campanha?</p>
+    <label class="field"><span>Data de início</span><input type="date" id="lStartDate" value="${$('#lStartDate')?.value||new Date().toISOString().slice(0,10)}"></label></div>`;
+
+  // Review steps
+  html+=`<div class="panel"><h2>Revisão das etapas</h2><p class="sub">Edite, adicione ou remova antes de confirmar. As alterações valem só para este lançamento — o template original não muda.</p>`;
+  if(launchSteps.length){launchSteps.forEach((s,i)=>{html+=renderStepCard(s,i+1,c.id,true)})}
+  else html+=`<div class="empty" style="padding:20px"><span class="big">Nenhuma etapa</span></div>`;
+  html+=`<div style="margin-top:14px"><button class="btn btn-ghost btn-sm" id="lAddStep">+ Adicionar etapa</button></div></div>`;
+
+  // Confirm
+  html+=`<div class="panel"><div class="actions"><button class="btn btn-primary" id="lConfirm">Confirmar e agendar ${launchSteps.length} etapa(s)</button></div></div>`;
+
+  w.innerHTML=html;
+
+  // Wire groups
+  w.querySelectorAll('#lGroupList input[type=checkbox]').forEach(cb=>{cb.addEventListener('change',()=>{const g=groupsCache.find(x=>x.id===cb.value);if(cb.checked)launchGroups.set(g.id,g.name);else launchGroups.delete(g.id);$('#lGroupCount').textContent=launchGroups.size+' selecionado(s)'})});
+  w.querySelector('#lSelAll')?.addEventListener('click',()=>{w.querySelectorAll('#lGroupList input').forEach(c=>{c.checked=true;c.dispatchEvent(new Event('change'))})});
+  w.querySelector('#lSelNone')?.addEventListener('click',()=>{w.querySelectorAll('#lGroupList input').forEach(c=>{c.checked=false;c.dispatchEvent(new Event('change'))})});
+
+  w.querySelector('#backFromLaunch')?.addEventListener('click',showCampList);
+  w.querySelector('#lAddStep')?.addEventListener('click',()=>openLaunchStepForm(null));
+  w.querySelectorAll('[data-launch-edit]').forEach(b=>b.addEventListener('click',()=>{const s=launchSteps.find(x=>x.id===b.dataset.launchEdit);openLaunchStepForm(s)}));
+  w.querySelectorAll('[data-launch-del]').forEach(b=>b.addEventListener('click',()=>{launchSteps=launchSteps.filter(x=>x.id!==b.dataset.launchDel);renderLaunch();toast('Etapa removida do lançamento.')}));
+  w.querySelector('#lConfirm')?.addEventListener('click',confirmLaunch);
+}
+
+function openLaunchStepForm(step){
+  const isNew=!step;
+  const s=step||{id:crypto.randomUUID(),dayOffset:0,time:'09:00',type:'texto',text:'',caption:'',fileName:null,filePath:null,mentionAll:false,humanize:true,pollQuestion:'',pollOptions:['',''],allowMultiple:false};
+  const modal=document.createElement('div');modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:40;display:grid;place-items:center;padding:20px';
+  modal.innerHTML=`<div class="panel" style="max-width:520px;width:100%;max-height:90vh;overflow-y:auto">
+    <h2>${isNew?'Adicionar etapa':'Editar etapa'}</h2>
+    <div class="inline-grid" style="margin:16px 0"><label class="field" style="margin:0"><span>Dia</span><select id="lf-day">${[...Array(14)].map((_,i)=>`<option value="${i}" ${s.dayOffset===i?'selected':''}>Dia ${i+1}</option>`).join('')}</select></label>
+    <label class="field" style="margin:0"><span>Horário</span><input type="time" id="lf-time" value="${s.time||'09:00'}"></label>
+    <label class="field" style="margin:0"><span>Tipo</span><select id="lf-type"><option value="texto" ${s.type==='texto'?'selected':''}>Texto</option><option value="midia" ${s.type==='midia'?'selected':''}>Foto/vídeo</option><option value="audio" ${s.type==='audio'?'selected':''}>Áudio</option><option value="enquete" ${s.type==='enquete'?'selected':''}>Enquete</option></select></label></div>
+    <div id="lf-fields"></div>
+    <label class="opt" style="margin-top:8px"><div class="switch"><input type="checkbox" id="lf-mention" ${s.mentionAll?'checked':''}><span class="slider"></span></div><div class="txt"><b>Mencionar todos</b></div></label>
+    <label class="opt"><div class="switch"><input type="checkbox" id="lf-humanize" ${s.humanize!==false?'checked':''}><span class="slider"></span></div><div class="txt"><b>Simular envio</b></div></label>
+    <div class="actions" style="margin-top:16px"><button class="btn btn-primary" id="lf-save">${isNew?'Adicionar':'Salvar'}</button><button class="btn btn-ghost" id="lf-cancel">Cancelar</button></div></div>`;
+  document.body.appendChild(modal);
+
+  function renderFields(){
+    const t=modal.querySelector('#lf-type').value;let h='';
+    if(t==='texto')h=`<label class="field"><span>Mensagem</span><textarea id="lf-text" style="min-height:80px">${esc(s.type===t?s.text:'')}</textarea></label>`;
+    else if(t==='midia')h=`<div class="file-drop" id="lf-media-drop"><span>${s.fileName&&s.type===t?'✓ '+esc(s.fileName):'Clique para escolher'}</span><input type="file" id="lf-media-file" accept="image/*,video/*" hidden></div><label class="field" style="margin-top:12px"><span>Legenda</span><textarea id="lf-caption" style="min-height:50px">${esc(s.type===t?s.caption:'')}</textarea></label>`;
+    else if(t==='audio')h=`<div class="file-drop" id="lf-audio-drop"><span>${s.fileName&&s.type===t?'✓ '+esc(s.fileName):'Clique para escolher'}</span><input type="file" id="lf-audio-file" accept="audio/*" hidden></div>`;
+    else if(t==='enquete'){const opts=s.type===t&&s.pollOptions?.length?s.pollOptions:['',''];
+      h=`<label class="field"><span>Pergunta</span><input type="text" id="lf-pollq" value="${esc(s.type===t?s.pollQuestion:'')}"></label><div id="lf-pollopts">${opts.map((o,i)=>`<div class="poll-opt"><input type="text" value="${esc(o)}" placeholder="Opção ${i+1}"><span class="rm">×</span></div>`).join('')}</div><span class="link" id="lf-addopt">+ opção</span>
+      <label class="opt" style="margin-top:8px"><div class="switch"><input type="checkbox" id="lf-multi" ${s.allowMultiple?'checked':''}><span class="slider"></span></div><div class="txt"><b>Múltiplas respostas</b></div></label>`}
+    modal.querySelector('#lf-fields').innerHTML=h;
+    const md=modal.querySelector('#lf-media-drop'),mf=modal.querySelector('#lf-media-file');
+    if(md&&mf){md.addEventListener('click',()=>mf.click());mf.addEventListener('change',()=>{if(mf.files[0])md.querySelector('span').textContent='✓ '+mf.files[0].name})}
+    const ad=modal.querySelector('#lf-audio-drop'),af=modal.querySelector('#lf-audio-file');
+    if(ad&&af){ad.addEventListener('click',()=>af.click());af.addEventListener('change',()=>{if(af.files[0])ad.querySelector('span').textContent='✓ '+af.files[0].name})}
+    modal.querySelector('#lf-addopt')?.addEventListener('click',()=>{const d=document.createElement('div');d.className='poll-opt';d.innerHTML=`<input type="text" placeholder="Opção"><span class="rm">×</span>`;modal.querySelector('#lf-pollopts').appendChild(d)});
+    modal.querySelector('#lf-pollopts')?.addEventListener('click',e=>{if(e.target.classList.contains('rm')){const all=modal.querySelectorAll('#lf-pollopts .poll-opt');if(all.length>2)e.target.parentElement.remove()}});
+  }
+  modal.querySelector('#lf-type').addEventListener('change',renderFields);renderFields();
+  modal.querySelector('#lf-cancel').addEventListener('click',()=>modal.remove());
+  modal.querySelector('#lf-save').addEventListener('click',async()=>{
+    const t=modal.querySelector('#lf-type').value;
+    s.dayOffset=parseInt(modal.querySelector('#lf-day').value);s.time=modal.querySelector('#lf-time').value;s.type=t;
+    s.mentionAll=modal.querySelector('#lf-mention').checked;s.humanize=modal.querySelector('#lf-humanize').checked;
+    if(t==='texto'){const tx=modal.querySelector('#lf-text')?.value;if(!tx?.trim())return toast('Escreva.',true);s.text=tx}
+    else if(t==='midia'){const f=modal.querySelector('#lf-media-file')?.files[0];
+      if(f){const fd=new FormData();fd.append('file',f);const r=await fetch('/api/upload',{method:'POST',body:fd});const d=await r.json();if(!r.ok)return toast(d.error,true);s.filePath=d.filePath;s.fileName=d.fileName}else if(isNew&&!s.filePath)return toast('Escolha arquivo.',true);
+      s.caption=modal.querySelector('#lf-caption')?.value||''}
+    else if(t==='audio'){const f=modal.querySelector('#lf-audio-file')?.files[0];
+      if(f){const fd=new FormData();fd.append('file',f);const r=await fetch('/api/upload',{method:'POST',body:fd});const d=await r.json();if(!r.ok)return toast(d.error,true);s.filePath=d.filePath;s.fileName=d.fileName}else if(isNew&&!s.filePath)return toast('Escolha áudio.',true)}
+    else if(t==='enquete'){const q=modal.querySelector('#lf-pollq')?.value;if(!q?.trim())return toast('Pergunta.',true);s.pollQuestion=q;
+      const opts=[...modal.querySelectorAll('#lf-pollopts input')].map(i=>i.value.trim()).filter(Boolean);if(opts.length<2)return toast('Mín. 2 opções.',true);s.pollOptions=opts;s.allowMultiple=modal.querySelector('#lf-multi')?.checked||false}
+    if(isNew){s.id=s.id||crypto.randomUUID();launchSteps.push(s)}
+    modal.remove();renderLaunch();toast(isNew?'Etapa adicionada.':'Salvo.');
+  });
+}
+
+async function confirmLaunch(){
+  if(!launchGroups.size)return toast('Selecione ao menos um grupo.',true);
+  if(!launchSteps.length)return toast('Adicione ao menos uma etapa.',true);
+  const startDate=$('#lStartDate')?.value;if(!startDate)return toast('Escolha a data de início.',true);
+  const body={startDate,groupIds:[...launchGroups.keys()],groupNames:[...launchGroups.values()],steps:launchSteps};
+  const r=await fetch(`/api/campaigns/${editingCampaign.id}/launch`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const d=await r.json();if(!r.ok)return toast(d.error,true);
+  toast(`Campanha lançada! ${d.jobCount} mensagem(s) agendada(s).`);showCampList();
+}
+
+// ===== HISTORY =====
+async function showHistory(){
+  campSubView='history';$('#camp-list').style.display='none';$('#camp-edit').style.display='none';$('#camp-launch').style.display='none';$('#camp-history').style.display='block';
+  const w=$('#camp-history');
+  try{
+    const launches=await fetch('/api/launches').then(r=>r.json());
+    let html=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:18px"><button class="btn btn-ghost btn-sm" id="backFromHistory">← Voltar</button><h2 style="font-size:18px">Histórico de lançamentos</h2></div>`;
+    if(!launches.length)html+=`<div class="empty"><span class="big">Nenhum lançamento</span></div>`;
+    else launches.forEach(l=>{
+      const dt=new Date(l.launchedAt).toLocaleString('pt-BR',{dateStyle:'medium',timeStyle:'short'});
+      const start=new Date(l.startDate+'T00:00:00').toLocaleDateString('pt-BR',{dateStyle:'medium'});
+      html+=`<div class="launch-card"><div class="launch-head"><span class="launch-name">${esc(l.campaignName)}</span><span class="launch-date">${dt}</span></div>
+        <div class="launch-detail">Início: ${start} · ${l.stepCount} etapa(s) · ${(l.groupNames||[]).map(esc).join(', ')}</div></div>`});
+    w.innerHTML=html;
+    w.querySelector('#backFromHistory')?.addEventListener('click',showCampList);
+  }catch{w.innerHTML='<div class="empty">Erro.</div>'}
+}
+
+// ===== INIT =====
+(function(){
+  const d=new Date(Date.now()+5*60000);d.setSeconds(0,0);
+  const tz=d.getTimezoneOffset()*60000;$('#sendAt').value=new Date(d-tz).toISOString().slice(0,16);
+  $$('#pollOpts .rm').forEach(rm=>rm.addEventListener('click',()=>{if($$('#pollOpts .poll-opt').length>2)rm.parentElement.remove()}));
+  pollStatus();setInterval(pollStatus,3000);loadGroups();
+})();
+</script>
+</body>
+</html>
