@@ -2,6 +2,8 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const QRCode = require('qrcode');
 const path = require('path');
 
+console.log('[WA] VERSAO DO CODIGO: sem userDataDir e sem single-process');
+
 const state = {
   status: 'iniciando',
   qrDataUrl: null,
