@@ -16,7 +16,6 @@ const client = new Client({
   puppeteer: {
     headless: true,
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
-    userDataDir: '/tmp/.puppeteer-profile',
     timeout: 60000,
     protocolTimeout: 60000,
     dumpio: true,
