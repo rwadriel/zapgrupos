@@ -14,7 +14,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxdamage1 \
     libxrandr2 \
     xdg-utils \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /run/dbus
 
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
@@ -31,4 +32,4 @@ RUN mkdir -p data media .wwebjs_auth
 
 EXPOSE 3900
 
-CMD ["node", "server.js"]
+CMD ["dbus-daemon", "--system", "--fork", ";", "node", "server.js"]
