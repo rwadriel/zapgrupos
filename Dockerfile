@@ -39,4 +39,4 @@ RUN mkdir -p data media .wwebjs_auth /tmp/.chrome /run/dbus
 
 EXPOSE 3900
 
-CMD ["sh", "-c", "echo '[Docker] VERSAO DEFINITIVA: Google Chrome Stable + DBus + Crashpad OFF'; mkdir -p /run/dbus /tmp/.chrome; rm -f /run/dbus/pid; dbus-daemon --system --fork --nopidfile || true; exec dumb-init node server.js"]
+CMD ["sh", "-c", "echo '[Docker] VERSAO DEFINITIVA: Google Chrome Stable + DBus + Crashpad OFF'; mkdir -p /run/dbus /tmp/.chrome; rm -f /run/dbus/pid; find /app/.wwebjs_auth -name 'Singleton*' -delete 2>/dev/null || true; echo '[Docker] Locks antigos do Chrome removidos.'; dbus-daemon --system --fork --nopidfile || true; exec dumb-init node server.js"]
