@@ -1,6 +1,9 @@
 const https = require('https');
 
-const TOPIC = process.env.ZG_HEARTBEAT_NTFY_TOPIC || 'zapgrupos-wagner-7k92mqp4s8';
+// O tópico ntfy funciona como uma senha: quem souber o nome recebe (e pode
+// enviar) notificações. Por isso não existe valor padrão — sem a variável
+// ZG_HEARTBEAT_NTFY_TOPIC o sinal fica desativado.
+const TOPIC = process.env.ZG_HEARTBEAT_NTFY_TOPIC || '';
 
 const MIN_HOURS = Number(process.env.ZG_HEARTBEAT_MIN_HOURS || 6);
 const MAX_HOURS = Number(process.env.ZG_HEARTBEAT_MAX_HOURS || 14);
@@ -27,6 +30,9 @@ function safeHeader(value, fallback = 'ZapGrupos') {
 
 function sendNtfy(title, message, priority = 'default', tags = 'bell') {
   return new Promise((resolve, reject) => {
+    if (!TOPIC) {
+      return reject(new Error('Sinal desativado: defina a variável ZG_HEARTBEAT_NTFY_TOPIC com um tópico ntfy secreto.'));
+    }
     const req = https.request({
       hostname: 'ntfy.sh',
       path: '/' + encodeURIComponent(TOPIC),
@@ -157,6 +163,11 @@ function vigiarMudancaDeStatus(wa) {
 function start(wa) {
   if (started) return;
   started = true;
+
+  if (!TOPIC) {
+    console.log('[SINAL] Desativado — defina ZG_HEARTBEAT_NTFY_TOPIC com um tópico secreto do ntfy.sh para ativar os avisos no celular.');
+    return;
+  }
 
   console.log('[SINAL] Ativado.');
   console.log('[SINAL] Topico ntfy:', TOPIC);

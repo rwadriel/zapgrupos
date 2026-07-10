@@ -44,11 +44,13 @@ PUPPETEER_EXECUTABLE_PATH="$CHROME_PATH" npm install
 # 6. Configurar variáveis de ambiente e systemd
 echo "[6/6] Criando serviço systemd..."
 
-# Gera uma senha aleatória se não existir .env
+# Gera uma senha e um tópico ntfy aleatórios se não existir .env
 if [ ! -f .env ]; then
   SENHA=$(openssl rand -base64 18 | tr -dc 'A-Za-z0-9' | head -c 16)
+  NTFY_TOPIC="zapgrupos-$(openssl rand -hex 8)"
   cat > .env << EOF
 ZAPGRUPOS_SENHA=$SENHA
+ZG_HEARTBEAT_NTFY_TOPIC=$NTFY_TOPIC
 PUPPETEER_EXECUTABLE_PATH=$CHROME_PATH
 PORT=3900
 EOF
@@ -57,6 +59,10 @@ EOF
   echo "  ║  SENHA GERADA: $SENHA               ║"
   echo "  ║  Salve em lugar seguro! Está em ~/zapgrupos/.env  ║"
   echo "  ╚════════════════════════════════════════════════╝"
+  echo ""
+  echo "  Avisos no celular (ntfy): assine o tópico abaixo no app ntfy:"
+  echo "    $NTFY_TOPIC"
+  echo "  O tópico é secreto — não compartilhe nem publique."
   echo ""
 fi
 

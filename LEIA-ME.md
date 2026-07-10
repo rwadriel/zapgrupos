@@ -69,6 +69,23 @@ Para trocar a porta: `PORT=4000 npm start`.
 
 ---
 
+## Avisos no celular (opcional)
+
+O ZapGrupos pode mandar notificações para o seu celular via [ntfy.sh](https://ntfy.sh): um "estou vivo" periódico e um alerta quando o WhatsApp cair ou reconectar.
+
+1. Instale o app **ntfy** no celular (iPhone ou Android).
+2. Invente um nome de tópico **secreto e difícil de adivinhar** (ex: `zapgrupos-a8f3k29x7q`). Qualquer pessoa que souber o nome recebe e pode enviar notificações nele — trate como uma senha.
+3. No app ntfy, assine (subscribe) esse tópico.
+4. Inicie o ZapGrupos com a variável definida:
+
+   ```
+   ZG_HEARTBEAT_NTFY_TOPIC=seu-topico-secreto npm start
+   ```
+
+Sem a variável, o recurso fica desativado — o resto do sistema funciona normalmente.
+
+---
+
 ## Avisos importantes
 
 - Use com bom senso. Disparos em massa e frequentes podem fazer o WhatsApp **bloquear seu número**. O "envio simulado" e as pausas entre grupos reduzem esse risco, mas não eliminam.
