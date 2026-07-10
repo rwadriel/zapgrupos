@@ -28,7 +28,14 @@ function nextOccurrence(sendAtISO, repeat) {
 }
 
 async function processJob(job) {
+  // Trava contra duplo envio: o tick do agendador e o botão "Enviar agora"
+  // podem chamar processJob para o mesmo job quase ao mesmo tempo (ou o
+  // usuário clica duas vezes). A checagem+marcação é síncrona, então a
+  // segunda chamada sempre vê "enviando" e desiste.
+  const atual = store.getJob(job.id);
+  if (!atual || atual.status === 'enviando') return;
   store.updateJob(job.id, { status: 'enviando', results: [] });
+
   const results = await runJob(job, (partial) => {
     store.updateJob(job.id, { results: partial });
   });
@@ -39,6 +46,15 @@ async function processJob(job) {
     okCount > 0 ? 'parcial' : 'falhou';
 
   store.updateJob(job.id, { status, results, sentAt: new Date().toISOString() });
+
+  if (status === 'falhou' || status === 'parcial') {
+    const falhas = results.filter(r => !r.ok);
+    heartbeat.notificar(
+      status === 'falhou' ? 'ZapGrupos: envio FALHOU' : 'ZapGrupos: envio parcial',
+      `${falhas.length} de ${results.length} grupo(s) falharam.\n${descreverJob(job)}\nErro: ${falhas[0]?.error || 'desconhecido'}\nReenvie pela aba Fila.`,
+      'high', status === 'falhou' ? 'rotating_light' : 'warning'
+    ).catch(err => console.log('[Agendador] Falha ao notificar ntfy:', err.message));
+  }
 
   // Recorrência: cria a próxima ocorrência como novo job agendado
   if (job.repeat && job.repeat !== 'nenhuma' && status !== 'cancelada') {

@@ -6,6 +6,22 @@ const { client, state } = require('./wa');
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const jitter = (min, max) => Math.floor(min + Math.random() * (max - min));
 
+// Teto de tempo para o envio a UM grupo. Se o WhatsApp Web travar (já
+// aconteceu: chamada do Puppeteer pendurada por 35min segurou a fila
+// inteira), o envio daquele grupo falha e a fila segue em frente.
+// A simulação humana usa no máximo ~25s de "digitando", então 4min é folga.
+const TIMEOUT_ENVIO_MS = Math.max(1, Number(process.env.ZG_TIMEOUT_ENVIO_MINUTOS) || 4) * 60000;
+
+function comTimeout(promise, ms) {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`Envio travou e foi abortado após ${Math.round(ms / 60000)}min.`)), ms);
+    promise.then(
+      v => { clearTimeout(t); resolve(v); },
+      e => { clearTimeout(t); reject(e); }
+    );
+  });
+}
+
 function typingMs(text) {
   const base = (text || '').length * jitter(45, 75);
   return Math.min(Math.max(base, 2000), 25000);
@@ -117,7 +133,7 @@ async function runJob(job, onProgress) {
   for (let i = 0; i < job.groupIds.length; i++) {
     const groupId = job.groupIds[i];
     try {
-      await sendToGroup(job, groupId);
+      await comTimeout(sendToGroup(job, groupId), TIMEOUT_ENVIO_MS);
       results.push({ groupId, ok: true, at: new Date().toISOString() });
     } catch (e) {
       results.push({ groupId, ok: false, error: e.message, at: new Date().toISOString() });

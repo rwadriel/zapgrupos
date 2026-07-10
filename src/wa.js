@@ -98,6 +98,8 @@ client.on('auth_failure', (msg) => {
   console.error('[WA] Falha de autenticação:', msg);
 });
 
+let retryTimer = null;
+
 function initialize() {
   console.log('[WA] Inicializando WhatsApp...');
   state.status = 'iniciando';
@@ -109,6 +111,12 @@ function initialize() {
     state.me = null;
     state.lastError = e.message;
     console.error('[WA] Erro ao inicializar:', e.message);
+
+    // Sem isto, uma falha na inicialização (Chrome engasgado, rede fora)
+    // deixava o sistema "desconectado" para sempre, até reiniciar na mão.
+    clearTimeout(retryTimer);
+    retryTimer = setTimeout(initialize, 30000);
+    console.log('[WA] Nova tentativa de conexão em 30s.');
   });
 }
 

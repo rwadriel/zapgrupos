@@ -19,6 +19,29 @@ const SENHA = process.env.ZAPGRUPOS_SENHA || '';
 
 function gerarToken() { return crypto.randomBytes(32).toString('hex'); }
 
+function senhaConfere(tentativa) {
+  const a = Buffer.from(String(tentativa || ''));
+  const b = Buffer.from(SENHA);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// Rate limit do login: o painel fica exposto na internet, então sem isto
+// um robô pode testar senhas à vontade. Máx. 5 erros por IP por minuto.
+const falhasLogin = new Map(); // ip -> [timestamps]
+
+function loginBloqueado(ip) {
+  const agora = Date.now();
+  const recentes = (falhasLogin.get(ip) || []).filter(t => agora - t < 60000);
+  if (recentes.length) falhasLogin.set(ip, recentes); else falhasLogin.delete(ip);
+  return recentes.length >= 5;
+}
+
+function registrarFalhaLogin(ip) {
+  const arr = falhasLogin.get(ip) || [];
+  arr.push(Date.now());
+  falhasLogin.set(ip, arr);
+}
+
 function parseCookies(req, res, next) {
   req.cookies = {};
   (req.headers.cookie || '').split(';').forEach(c => {
@@ -97,13 +120,18 @@ const upload = multer({
 });
 
 const app = express();
+app.set('trust proxy', 1); // atrás do proxy do EasyPanel: req.ip = IP real do visitante
 app.use(express.json({ limit: '10mb' }));
 app.use(parseCookies);
 
 // Auth
 app.post('/api/login', (req, res) => {
   if (!SENHA) return res.json({ ok: true, token: 'none' });
-  if (req.body.senha !== SENHA) return res.status(403).json({ error: 'Senha incorreta.' });
+  if (loginBloqueado(req.ip)) return res.status(429).json({ error: 'Muitas tentativas. Aguarde um minuto.' });
+  if (!senhaConfere(req.body.senha)) {
+    registrarFalhaLogin(req.ip);
+    return res.status(403).json({ error: 'Senha incorreta.' });
+  }
   const token = gerarToken();
   sessions.add(token);
   res.cookie('zg_token', token, { httpOnly: true, maxAge: sessions.TTL_MS, sameSite: 'lax' });
