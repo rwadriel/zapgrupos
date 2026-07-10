@@ -2,13 +2,20 @@
 const store = require('./store');
 const { runJob } = require('./sender');
 const { state } = require('./wa');
+const heartbeat = require('./heartbeat');
 
 let running = false;
 
 // Job atrasado além deste limite não dispara mais: vira "expirada" (ou pula
 // para a próxima ocorrência, se for recorrente). Evita rajada de mensagens
 // velhas quando o servidor/WhatsApp fica um bom tempo fora do ar.
-const MAX_ATRASO_MS = Math.max(1, Number(process.env.ZG_MAX_ATRASO_MINUTOS) || 60) * 60000;
+const MAX_ATRASO_MS = Math.max(1, Number(process.env.ZG_MAX_ATRASO_MINUTOS) || 5) * 60000;
+
+function descreverJob(job) {
+  const quando = new Date(job.sendAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+  const grupos = (job.groupNames || []).join(', ') || `${(job.groupIds || []).length} grupo(s)`;
+  return `Tipo: ${job.type}\nAgendada para: ${quando}\nGrupos: ${grupos}`;
+}
 
 function nextOccurrence(sendAtISO, repeat) {
   const d = new Date(sendAtISO);
@@ -61,13 +68,24 @@ async function tick() {
     for (const job of due) {
       const atraso = now - new Date(job.sendAt);
       if (atraso > MAX_ATRASO_MS) {
+        const atrasoMin = Math.round(atraso / 60000);
         if (job.repeat && job.repeat !== 'nenhuma') {
           const next = nextOccurrence(job.sendAt, job.repeat);
           store.updateJob(job.id, { sendAt: next });
-          console.log(`[Agendador] Job ${job.id} atrasado ${Math.round(atraso / 60000)}min; recorrente, pulou para ${next}.`);
+          console.log(`[Agendador] Job ${job.id} atrasado ${atrasoMin}min; recorrente, pulou para ${next}.`);
+          heartbeat.notificar(
+            'ZapGrupos: recorrente pulada',
+            `Uma mensagem recorrente atrasou ${atrasoMin}min e foi pulada para a próxima ocorrência.\n${descreverJob(job)}`,
+            'default', 'fast_forward'
+          ).catch(err => console.log('[Agendador] Falha ao notificar ntfy:', err.message));
         } else {
           store.updateJob(job.id, { status: 'expirada' });
-          console.log(`[Agendador] Job ${job.id} atrasado ${Math.round(atraso / 60000)}min; marcado como expirado (limite ${MAX_ATRASO_MS / 60000}min).`);
+          console.log(`[Agendador] Job ${job.id} atrasado ${atrasoMin}min; marcado como expirado (limite ${MAX_ATRASO_MS / 60000}min).`);
+          heartbeat.notificar(
+            'ZapGrupos: mensagem NAO enviada (expirou)',
+            `Uma mensagem atrasou ${atrasoMin}min (limite ${MAX_ATRASO_MS / 60000}min) e NÃO foi enviada.\n${descreverJob(job)}\nPara mandar mesmo assim, use "Reenviar" na aba Fila.`,
+            'high', 'warning'
+          ).catch(err => console.log('[Agendador] Falha ao notificar ntfy:', err.message));
         }
         continue;
       }

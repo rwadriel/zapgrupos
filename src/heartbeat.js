@@ -113,6 +113,13 @@ async function enviarSinalManual(wa) {
   await enviarSinal(wa, true);
 }
 
+// Notificação avulsa (usada pelo agendador para avisar expiração de jobs).
+// Sem tópico configurado, vira um no-op silencioso.
+async function notificar(title, message, priority = 'high', tags = 'warning') {
+  if (!TOPIC) return;
+  await sendNtfy(title, message, priority, tags);
+}
+
 function agendarSinalAleatorio(wa) {
   const delay = randomDelayMs();
   const horas = Math.round((delay / 3600000) * 10) / 10;
@@ -186,5 +193,6 @@ function start(wa) {
 
 module.exports = {
   start,
-  enviarSinalManual
+  enviarSinalManual,
+  notificar
 };
