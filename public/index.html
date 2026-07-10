@@ -84,7 +84,7 @@
   .st-enviando{background:var(--green-soft);color:var(--green-deep)}
   .st-enviada{background:var(--green-soft);color:var(--green-deep)}
   .st-parcial{background:var(--amber-soft);color:var(--amber)}
-  .st-falhou,.st-cancelada{background:var(--red-soft);color:var(--red)}
+  .st-falhou,.st-cancelada,.st-expirada{background:var(--red-soft);color:var(--red)}
   .job-body{font-size:13.5px}.job-groups{font-size:12.5px;color:var(--muted);margin-top:6px}
   .job-flags{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
   .flag{font-size:11px;padding:2px 8px;border-radius:6px;background:var(--paper);border:1px solid var(--line);color:var(--muted)}
@@ -287,11 +287,11 @@ function renderJob(j){
   const flags=[];if(j.humanize)flags.push('simulado');if(j.mentionAll)flags.push('menciona todos');if(j.campaignName)flags.push('campanha: '+j.campaignName);
   const done=(j.results||[]).filter(r=>r.ok).length,total=(j.groupIds||[]).length;
   const rs=(j.status==='enviada'||j.status==='parcial'||j.status==='falhou')?' · '+done+'/'+total+' entregues':'';
-  const sl={agendada:'Agendada',enviando:'Enviando…',enviada:'Enviada',parcial:'Parcial',falhou:'Falhou',cancelada:'Cancelada'};
+  const sl={agendada:'Agendada',enviando:'Enviando…',enviada:'Enviada',parcial:'Parcial',falhou:'Falhou',cancelada:'Cancelada',expirada:'Expirada'};
   el.innerHTML=`<div class="job-head"><span class="job-type">${TYPE_LABELS[j.type]||j.type}</span><span class="job-when">${when}</span><span class="job-status st-${j.status}">${sl[j.status]||j.status}${rs}</span></div>
     <div class="job-body">${body}</div><div class="job-groups">→ ${(j.groupNames||[]).map(esc).join(', ')}</div>
     <div class="job-flags">${flags.map(f=>`<span class="flag">${f}</span>`).join('')}</div>
-    <div class="job-foot">${j.status==='agendada'?'<button class="btn btn-ghost btn-sm" data-act="send">Enviar agora</button>':''}${(j.status==='falhou'||j.status==='parcial')?'<button class="btn btn-ghost btn-sm" data-act="send">Reenviar</button>':''}${j.status==='agendada'?'<button class="btn btn-danger" data-act="cancel">Cancelar</button>':''}<button class="btn btn-danger" data-act="del" style="margin-left:auto">Excluir</button></div>`;
+    <div class="job-foot">${j.status==='agendada'?'<button class="btn btn-ghost btn-sm" data-act="send">Enviar agora</button>':''}${(j.status==='falhou'||j.status==='parcial'||j.status==='expirada')?'<button class="btn btn-ghost btn-sm" data-act="send">Reenviar</button>':''}${j.status==='agendada'?'<button class="btn btn-danger" data-act="cancel">Cancelar</button>':''}<button class="btn btn-danger" data-act="del" style="margin-left:auto">Excluir</button></div>`;
   el.querySelectorAll('[data-act]').forEach(b=>b.addEventListener('click',async()=>{
     if(b.dataset.act==='send'){await fetch(`/api/jobs/${j.id}/send-now`,{method:'POST'});toast('Iniciado.')}
     if(b.dataset.act==='cancel'){await fetch(`/api/jobs/${j.id}/cancel`,{method:'POST'});toast('Cancelado.')}

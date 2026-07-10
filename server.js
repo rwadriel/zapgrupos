@@ -7,6 +7,7 @@ const crypto = require('crypto');
 
 const wa = require('./src/wa');
 const store = require('./src/store');
+const sessions = require('./src/sessions');
 const scheduler = require('./src/scheduler'); const heartbeat = require('./src/heartbeat');
 
 const PORT = process.env.PORT || 3900;
@@ -15,7 +16,6 @@ fs.mkdirSync(MEDIA_DIR, { recursive: true });
 
 // ===== AUTH =====
 const SENHA = process.env.ZAPGRUPOS_SENHA || '';
-const SESSIONS = new Set();
 
 function gerarToken() { return crypto.randomBytes(32).toString('hex'); }
 
@@ -29,53 +29,7 @@ function parseCookies(req, res, next) {
 }
 
 
-function parseClientDateTime(value, timezoneOffset) {
-  if (!value) return null;
-
-  const raw = String(value).trim();
-
-  // Se já veio com timezone/Z, respeita.
-  if (/[zZ]$|[+-]\d{2}:\d{2}$/.test(raw)) {
-    const d = new Date(raw);
-    return isNaN(d.getTime()) ? null : d;
-  }
-
-  // Formato vindo de input datetime-local: YYYY-MM-DDTHH:mm
-  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
-  if (!m) return null;
-
-  const [, y, mo, da, h, mi, s = '0'] = m;
-
-  // getTimezoneOffset do navegador: Brasil normalmente 180.
-  // Fallback 180 para evitar o erro do Docker UTC.
-  const offset = Number.isFinite(Number(timezoneOffset)) ? Number(timezoneOffset) : 180;
-
-  const utcMs =
-    Date.UTC(Number(y), Number(mo) - 1, Number(da), Number(h), Number(mi), Number(s)) +
-    offset * 60000;
-
-  const d = new Date(utcMs);
-  return isNaN(d.getTime()) ? null : d;
-}
-
-function addDaysToDateString(dateStr, days) {
-  const m = String(dateStr || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) throw new Error('Data de início inválida.');
-
-  const [, y, mo, da] = m;
-  const d = new Date(Date.UTC(Number(y), Number(mo) - 1, Number(da)));
-  d.setUTCDate(d.getUTCDate() + Number(days || 0));
-
-  const yy = d.getUTCFullYear();
-  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const dd = String(d.getUTCDate()).padStart(2, '0');
-
-  return `${yy}-${mm}-${dd}`;
-}
-
-
-
-// ===== CORREÇÃO ZAPGRUPOS: DATAS COM FUSO DO BRASIL =====
+// ===== DATAS COM FUSO DO BRASIL =====
 function zgGetClientOffsetMinutes(value) {
   const n = Number.parseInt(value, 10);
   if (Number.isFinite(n) && Math.abs(n) <= 14 * 60) return n;
@@ -125,7 +79,7 @@ function authMiddleware(req, res, next) {
   const token = (req.cookies && req.cookies.zg_token)
     || (req.headers.authorization || '').replace('Bearer ', '')
     || req.query.token;
-  if (token && SESSIONS.has(token)) return next();
+  if (sessions.has(token)) return next();
   if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'Faça login.' });
   return res.sendFile(path.join(__dirname, 'public', 'login.html'));
 }
@@ -151,13 +105,12 @@ app.post('/api/login', (req, res) => {
   if (!SENHA) return res.json({ ok: true, token: 'none' });
   if (req.body.senha !== SENHA) return res.status(403).json({ error: 'Senha incorreta.' });
   const token = gerarToken();
-  SESSIONS.add(token);
-  if (SESSIONS.size > 50) { const [oldest] = SESSIONS; SESSIONS.delete(oldest); }
-  res.cookie('zg_token', token, { httpOnly: true, maxAge: 7 * 24 * 3600 * 1000, sameSite: 'lax' });
+  sessions.add(token);
+  res.cookie('zg_token', token, { httpOnly: true, maxAge: sessions.TTL_MS, sameSite: 'lax' });
   res.json({ ok: true, token });
 });
 app.post('/api/logout-session', (req, res) => {
-  SESSIONS.delete((req.cookies && req.cookies.zg_token) || '');
+  sessions.remove((req.cookies && req.cookies.zg_token) || '');
   res.clearCookie('zg_token');
   res.json({ ok: true });
 });
@@ -238,7 +191,7 @@ app.post('/api/jobs', upload.single('file'), (req, res) => {
 app.post('/api/jobs/:id/send-now', (req, res) => {
   const job = store.getJob(req.params.id);
   if (!job) return res.status(404).json({ error: 'Não encontrado.' });
-  if (!['agendada', 'falhou', 'parcial'].includes(job.status))
+  if (!['agendada', 'falhou', 'parcial', 'expirada'].includes(job.status))
     return res.status(400).json({ error: 'Não pode ser reenviado agora.' });
   scheduler.processJob(job).catch(e => {
     store.updateJob(job.id, { status: 'falhou', results: [{ ok: false, error: e.message }] });
@@ -254,7 +207,11 @@ app.post('/api/jobs/:id/cancel', (req, res) => {
 
 app.delete('/api/jobs/:id', (req, res) => {
   const job = store.getJob(req.params.id);
-  if (job && job.filePath) { try { fs.unlinkSync(job.filePath); } catch {} }
+  // Só apaga o arquivo se nenhum outro job ou etapa de campanha usar o mesmo
+  // (lançamentos de campanha compartilham a mídia da etapa original).
+  if (job && job.filePath && store.countFileRefs(job.filePath, job.id) === 0) {
+    try { fs.unlinkSync(job.filePath); } catch {}
+  }
   res.json({ ok: store.removeJob(req.params.id) });
 });
 
@@ -360,6 +317,11 @@ app.post('/api/campaigns/:id/launch', (req, res) => {
         : (a.dayOffset || 0) - (b.dayOffset || 0));
 
     for (const step of normalizedSteps) {
+      // O filePath vem do navegador: só aceita arquivos dentro de media/.
+      if (step.filePath && !path.resolve(String(step.filePath)).startsWith(MEDIA_DIR + path.sep)) {
+        return res.status(400).json({ error: `O arquivo da etapa ${step.order || ''} é inválido. Envie a mídia novamente.` });
+      }
+
       const sendDate = zgBuildClientDateFromParts(startDate, step.time || '09:00', step.dayOffset || 0, offset);
 
       if (!sendDate) {

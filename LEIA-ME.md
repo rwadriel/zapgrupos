@@ -40,6 +40,7 @@ ZG_HEARTBEAT_NTFY_TOPIC=seu-topico-ntfy-secreto
 - `ZAPGRUPOS_SENHA` — **obrigatória**: o painel fica exposto na internet; sem senha, qualquer pessoa que descobrir a URL controla o seu WhatsApp.
 - `ZG_HEARTBEAT_NTFY_TOPIC` — opcional: ativa os avisos no celular (veja a seção "Sinal no celular").
 - `PORT` — opcional, padrão `3900`.
+- `ZG_MAX_ATRASO_MINUTOS` — opcional, padrão `60`: se o servidor/WhatsApp ficar fora do ar e uma mensagem agendada atrasar mais do que isso, ela **não** é disparada ao religar — vira "Expirada" na fila (com botão de reenviar). Mensagens recorrentes pulam para a próxima ocorrência.
 
 ### 3. Volumes (aba Mounts) — OBRIGATÓRIO
 

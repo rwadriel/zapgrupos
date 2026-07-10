@@ -5,6 +5,11 @@ const { state } = require('./wa');
 
 let running = false;
 
+// Job atrasado além deste limite não dispara mais: vira "expirada" (ou pula
+// para a próxima ocorrência, se for recorrente). Evita rajada de mensagens
+// velhas quando o servidor/WhatsApp fica um bom tempo fora do ar.
+const MAX_ATRASO_MS = Math.max(1, Number(process.env.ZG_MAX_ATRASO_MINUTOS) || 60) * 60000;
+
 function nextOccurrence(sendAtISO, repeat) {
   const d = new Date(sendAtISO);
   const now = new Date();
@@ -54,6 +59,18 @@ async function tick() {
   running = true;
   try {
     for (const job of due) {
+      const atraso = now - new Date(job.sendAt);
+      if (atraso > MAX_ATRASO_MS) {
+        if (job.repeat && job.repeat !== 'nenhuma') {
+          const next = nextOccurrence(job.sendAt, job.repeat);
+          store.updateJob(job.id, { sendAt: next });
+          console.log(`[Agendador] Job ${job.id} atrasado ${Math.round(atraso / 60000)}min; recorrente, pulou para ${next}.`);
+        } else {
+          store.updateJob(job.id, { status: 'expirada' });
+          console.log(`[Agendador] Job ${job.id} atrasado ${Math.round(atraso / 60000)}min; marcado como expirado (limite ${MAX_ATRASO_MS / 60000}min).`);
+        }
+        continue;
+      }
       console.log(`[Agendador] Disparando job ${job.id} (${job.type}) para ${job.groupIds.length} grupo(s).`);
       await processJob(job);
     }
@@ -65,8 +82,17 @@ async function tick() {
 }
 
 function start() {
+  // Job que ficou preso em "enviando" (restart no meio do envio) vira "falhou"
+  // para poder ser reenviado pela fila, em vez de ficar travado para sempre.
+  for (const job of store.listJobs()) {
+    if (job.status === 'enviando') {
+      store.updateJob(job.id, { status: 'falhou' });
+      console.log(`[Agendador] Job ${job.id} estava "enviando" durante o restart; marcado como falhou.`);
+    }
+  }
+
   setInterval(tick, 15000);
-  console.log('[Agendador] Ativo — verificando a fila a cada 15s.');
+  console.log(`[Agendador] Ativo — verificando a fila a cada 15s (atraso máximo tolerado: ${MAX_ATRASO_MS / 60000}min).`);
 }
 
 module.exports = { start, processJob };
