@@ -3,14 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ZapGrupos — Login</title>
+<title>ZAG GRUPOS — Login</title>
+<link rel="icon" type="image/svg+xml" href="/logo.svg">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root { --ink:#0e1613; --paper:#f3f0e9; --panel:#fff; --line:#d8d3c7; --green:#1f7a54; --green-deep:#14503a; --green-soft:#e4efe8; --red:#b23b3b; --muted:#6d7671; }
   * { box-sizing:border-box; margin:0; padding:0; }
   body { font-family:'Inter',system-ui,sans-serif; background:var(--paper); color:var(--ink); min-height:100vh; display:grid; place-items:center; }
   .card { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:36px 32px; width:360px; max-width:90vw; box-shadow:0 8px 24px -12px rgba(14,22,19,.18); text-align:center; }
-  .glyph { width:52px; height:52px; border-radius:14px; background:var(--green); color:#fff; display:inline-grid; place-items:center; font-family:'Space Grotesk'; font-weight:700; font-size:26px; margin-bottom:16px; }
+  .glyph { width:76px; height:76px; object-fit:contain; display:inline-block; margin-bottom:12px; }
   h1 { font-family:'Space Grotesk'; font-size:22px; font-weight:700; letter-spacing:-.02em; margin-bottom:4px; }
   p { font-size:13.5px; color:var(--muted); margin-bottom:24px; }
   input { width:100%; padding:12px 14px; font:inherit; font-size:15px; background:var(--paper); border:1px solid var(--line); border-radius:10px; color:var(--ink); margin-bottom:16px; }
@@ -23,8 +24,8 @@
 </head>
 <body>
 <div class="card">
-  <div class="glyph">Z</div>
-  <h1>ZapGrupos</h1>
+  <img class="glyph" src="/logo.svg" alt="ZAG Grupos">
+  <h1>ZAG GRUPOS</h1>
   <p>Digite a senha para acessar o painel.</p>
   <div class="err" id="err"></div>
   <input type="password" id="pw" placeholder="Senha" autofocus>

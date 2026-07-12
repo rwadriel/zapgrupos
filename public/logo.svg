@@ -1,0 +1,49 @@
+<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="ZAG Grupos">
+  <defs>
+    <linearGradient id="zgGrad" x1="20" y1="16" x2="108" y2="112" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6ec46f"/>
+      <stop offset=".55" stop-color="#37a457"/>
+      <stop offset="1" stop-color="#1f7a54"/>
+    </linearGradient>
+  </defs>
+
+  <!-- WhatsApp bubble tail (bottom-left) -->
+  <path d="M 30 90 L 15 113 L 41 99 Z" fill="url(#zgGrad)"/>
+
+  <!-- Reload ring: two arcs with gaps at top-right and bottom-left -->
+  <g fill="none" stroke="url(#zgGrad)" stroke-width="12" stroke-linecap="round">
+    <path d="M 99.4 55.05 A 40 40 0 0 0 20.15 65.49"/>
+    <path d="M 23.75 78.9 A 40 40 0 0 0 94.64 42"/>
+  </g>
+
+  <!-- Arrowhead at top-right (pointing up-left) -->
+  <path d="M 89.64 33.34 L 100.7 38.5 L 88.58 45.5 Z" fill="url(#zgGrad)"/>
+  <!-- Arrowhead at bottom-left (pointing down) -->
+  <path d="M 21.0 75.45 L 27.12 64.88 L 13.18 66.10 Z" fill="url(#zgGrad)"/>
+
+  <!-- Clock face -->
+  <circle cx="60" cy="62" r="30" fill="#ffffff"/>
+
+  <!-- Ticks -->
+  <g stroke="#1f7a54" stroke-width="2.4" stroke-linecap="round">
+    <line x1="60" y1="35" x2="60" y2="41" transform="rotate(0 60 62)"/>
+    <line x1="60" y1="35" x2="60" y2="41" transform="rotate(30 60 62)"/>
+    <line x1="60" y1="35" x2="60" y2="41" transform="rotate(60 60 62)"/>
+    <line x1="60" y1="35" x2="60" y2="41" transform="rotate(90 60 62)"/>
+    <line x1="60" y1="35" x2="60" y2="41" transform="rotate(120 60 62)"/>
+    <line x1="60" y1="35" x2="60" y2="41" transform="rotate(150 60 62)"/>
+    <line x1="60" y1="35" x2="60" y2="41" transform="rotate(180 60 62)"/>
+    <line x1="60" y1="35" x2="60" y2="41" transform="rotate(210 60 62)"/>
+    <line x1="60" y1="35" x2="60" y2="41" transform="rotate(240 60 62)"/>
+    <line x1="60" y1="35" x2="60" y2="41" transform="rotate(270 60 62)"/>
+    <line x1="60" y1="35" x2="60" y2="41" transform="rotate(300 60 62)"/>
+    <line x1="60" y1="35" x2="60" y2="41" transform="rotate(330 60 62)"/>
+  </g>
+
+  <!-- Hands (~10:10) -->
+  <g stroke="#1f7a54" stroke-linecap="round" fill="none">
+    <line x1="60" y1="62" x2="46" y2="49" stroke-width="4"/>
+    <line x1="60" y1="62" x2="77" y2="52" stroke-width="3.4"/>
+  </g>
+  <circle cx="60" cy="62" r="3.2" fill="#1f7a54"/>
+</svg>
