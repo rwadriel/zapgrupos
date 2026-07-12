@@ -7,16 +7,17 @@
 <link rel="icon" type="image/svg+xml" href="/logo.svg">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500&display=swap" rel="stylesheet">
 <style>
-  :root { --ink:#0e1613; --paper:#f3f0e9; --panel:#fff; --line:#d8d3c7; --green:#1f7a54; --green-deep:#14503a; --green-soft:#e4efe8; --red:#b23b3b; --muted:#6d7671; }
+  :root { --ink:#eef2ee; --paper:#0c0e0d; --panel:#181c1a; --line:#2a302c; --input:#232826; --green:#c9f15b; --green-deep:#b3dc48; --green-ink:#1b2506; --green-soft:rgba(201,241,91,.15); --red:#f07a6c; --muted:#939d96; }
   * { box-sizing:border-box; margin:0; padding:0; }
   body { font-family:'Inter',system-ui,sans-serif; background:var(--paper); color:var(--ink); min-height:100vh; display:grid; place-items:center; }
-  .card { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:36px 32px; width:360px; max-width:90vw; box-shadow:0 8px 24px -12px rgba(14,22,19,.18); text-align:center; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:18px; padding:36px 32px; width:360px; max-width:90vw; box-shadow:0 14px 40px -14px rgba(0,0,0,.55); text-align:center; }
   .glyph { width:76px; height:76px; object-fit:contain; display:inline-block; margin-bottom:12px; }
   h1 { font-family:'Space Grotesk'; font-size:22px; font-weight:700; letter-spacing:-.02em; margin-bottom:4px; }
   p { font-size:13.5px; color:var(--muted); margin-bottom:24px; }
-  input { width:100%; padding:12px 14px; font:inherit; font-size:15px; background:var(--paper); border:1px solid var(--line); border-radius:10px; color:var(--ink); margin-bottom:16px; }
+  input { width:100%; padding:12px 14px; font:inherit; font-size:15px; background:var(--input); border:1px solid var(--line); border-radius:10px; color:var(--ink); margin-bottom:16px; color-scheme:dark; }
+  input::placeholder { color:#6b756e; }
   input:focus { outline:none; border-color:var(--green); box-shadow:0 0 0 3px var(--green-soft); }
-  button { width:100%; padding:13px; border:none; border-radius:10px; background:var(--green); color:#fff; font:inherit; font-family:'Space Grotesk'; font-size:15px; font-weight:600; cursor:pointer; }
+  button { width:100%; padding:13px; border:none; border-radius:10px; background:var(--green); color:var(--green-ink); font:inherit; font-family:'Space Grotesk'; font-size:15px; font-weight:700; cursor:pointer; }
   button:hover { background:var(--green-deep); }
   button:disabled { background:var(--line); color:var(--muted); cursor:not-allowed; }
   .err { color:var(--red); font-size:13px; margin-bottom:12px; min-height:18px; }
