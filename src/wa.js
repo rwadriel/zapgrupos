@@ -123,25 +123,52 @@ function initialize() {
   });
 }
 
+// getChats() do WhatsApp Web às vezes trava (bug conhecido do Puppeteer):
+// a chamada nunca resolve e, sem teto de tempo, o /api/groups fica pendurado
+// para sempre — o painel espera sem mostrar grupo nem erro. Este teto força
+// a falha para virar um erro visível (o painel recarrega sozinho a cada 3s).
+const LISTAR_TIMEOUT_MS = 25000;
+
+function getChatsComTimeout(ms) {
+  return Promise.race([
+    client.getChats(),
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`getChats travou (timeout ${ms / 1000}s)`)), ms))
+  ]);
+}
+
+let listandoGrupos = false;
+let ultimosGrupos = [];
+
 async function listGroups() {
   if (state.status !== 'conectado') {
     console.log('[Grupos] Ignorado: status =', state.status);
     return [];
   }
 
-  let chats = [];
+  // O painel faz polling a cada 3s; enquanto uma listagem está em andamento,
+  // devolve o último resultado bom em vez de empilhar chamadas ao getChats.
+  if (listandoGrupos) return ultimosGrupos;
+  listandoGrupos = true;
 
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    chats = await client.getChats();
-    const groupCount = chats.filter(c => c.isGroup).length;
+  try {
+    let chats = [];
 
-    console.log(`[Grupos] Tentativa ${attempt}: ${chats.length} conversa(s), ${groupCount} grupo(s).`);
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        chats = await getChatsComTimeout(LISTAR_TIMEOUT_MS);
+      } catch (e) {
+        console.log(`[Grupos] Tentativa ${attempt} falhou: ${e.message}`);
+        throw new Error('O WhatsApp demorou demais para responder. Clique em "recarregar"; se continuar, reinicie o app.');
+      }
+      const groupCount = chats.filter(c => c.isGroup).length;
 
-    if (groupCount > 0) break;
-    if (attempt < 3) await new Promise(r => setTimeout(r, 4000));
-  }
+      console.log(`[Grupos] Tentativa ${attempt}: ${chats.length} conversa(s), ${groupCount} grupo(s).`);
 
-  return chats
+      if (groupCount > 0) break;
+      if (attempt < 3) await new Promise(r => setTimeout(r, 4000));
+    }
+
+    ultimosGrupos = chats
     .filter(c => c.isGroup)
     .map(c => ({
       id: c.id._serialized,
@@ -155,6 +182,11 @@ async function listGroups() {
         : false
     }))
     .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+
+    return ultimosGrupos;
+  } finally {
+    listandoGrupos = false;
+  }
 }
 
 async function logout() {
