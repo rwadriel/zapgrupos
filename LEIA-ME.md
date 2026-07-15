@@ -10,7 +10,7 @@ Agendador de mensagens para **grupos** do WhatsApp. Feito para rodar em uma VPS 
 - Envia para **vários grupos de uma vez**, um por vez, com pausa aleatória entre eles.
 - Tipos de conteúdo:
   - **Texto**
-  - **Foto / vídeo** (com legenda opcional)
+  - **Foto / vídeo** (um ou **vários arquivos** — até 10 — na mesma mensagem, podendo misturar fotos e vídeos; a legenda vai no primeiro)
   - **Áudio** enviado como **nota de voz (PTT)** — aparece como se você tivesse gravado na hora, com o status "gravando áudio…" antes.
   - **Enquete** (2 a 12 opções, resposta única ou múltipla).
 - **Campanhas**: sequências de mensagens de vários dias, reutilizáveis, lançadas para os grupos que você escolher.

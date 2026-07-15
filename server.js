@@ -167,16 +167,17 @@ app.get('/api/groups', async (req, res) => {
 // ===== Jobs (mensagens avulsas) =====
 app.get('/api/jobs', (req, res) => res.json(store.listJobs()));
 
-app.post('/api/jobs', upload.single('file'), (req, res) => {
+app.post('/api/jobs', upload.array('file', 10), (req, res) => {
   try {
     const b = req.body;
     const groupIds = JSON.parse(b.groupIds || '[]');
     if (!groupIds.length) return res.status(400).json({ error: 'Selecione ao menos um grupo.' });
 
     const type = b.type;
+    const uploaded = req.files || [];
     if (!['texto', 'midia', 'audio', 'enquete'].includes(type)) return res.status(400).json({ error: 'Tipo de mensagem inválido.' });
     if (type === 'texto' && !b.text) return res.status(400).json({ error: 'Escreva o texto.' });
-    if ((type === 'midia' || type === 'audio') && !req.file) return res.status(400).json({ error: 'Envie o arquivo de mídia.' });
+    if ((type === 'midia' || type === 'audio') && !uploaded.length) return res.status(400).json({ error: 'Envie o arquivo de mídia.' });
 
     let pollOptions = [];
     if (type === 'enquete') {
@@ -197,7 +198,9 @@ app.post('/api/jobs', upload.single('file'), (req, res) => {
       id: crypto.randomUUID(), status: 'agendada', type, groupIds,
       groupNames: JSON.parse(b.groupNames || '[]'),
       text: b.text || null, caption: b.caption || null,
-      filePath: req.file ? req.file.path : null, fileName: req.file ? req.file.originalname : null,
+      filePath: uploaded[0] ? uploaded[0].path : null, fileName: uploaded[0] ? uploaded[0].originalname : null,
+      // Vários arquivos numa mesma mensagem: só para foto/vídeo (áudio segue único)
+      files: (type === 'midia' && uploaded.length) ? uploaded.map(f => ({ filePath: f.path, fileName: f.originalname })) : undefined,
       pollQuestion: b.pollQuestion || null, pollOptions, allowMultiple: b.allowMultiple === 'true',
       mentionAll: b.mentionAll === 'true', humanize: b.humanize !== 'false',
       repeat: b.repeat || 'nenhuma', sendAt: sendAtDate.toISOString(),
@@ -237,8 +240,13 @@ app.delete('/api/jobs/:id', (req, res) => {
   const job = store.getJob(req.params.id);
   // Só apaga o arquivo se nenhum outro job ou etapa de campanha usar o mesmo
   // (lançamentos de campanha compartilham a mídia da etapa original).
-  if (job && job.filePath && store.countFileRefs(job.filePath, job.id) === 0) {
-    try { fs.unlinkSync(job.filePath); } catch {}
+  if (job) {
+    const paths = new Set([job.filePath, ...(job.files || []).map(f => f.filePath)].filter(Boolean));
+    for (const p of paths) {
+      if (store.countFileRefs(p, job.id) === 0) {
+        try { fs.unlinkSync(p); } catch {}
+      }
+    }
   }
   res.json({ ok: store.removeJob(req.params.id) });
 });
@@ -267,10 +275,11 @@ app.delete('/api/campaigns/:id', (req, res) => {
 });
 
 // Adicionar etapa
-app.post('/api/campaigns/:id/steps', upload.single('file'), (req, res) => {
+app.post('/api/campaigns/:id/steps', upload.array('file', 10), (req, res) => {
   const c = store.getCampaign(req.params.id);
   if (!c) return res.status(404).json({ error: 'Campanha não encontrada.' });
   const b = req.body;
+  const uploaded = req.files || [];
   const step = {
     id: crypto.randomUUID(),
     order: c.steps.length + 1,
@@ -279,8 +288,9 @@ app.post('/api/campaigns/:id/steps', upload.single('file'), (req, res) => {
     type: b.type || 'texto',
     text: b.text || null,
     caption: b.caption || null,
-    filePath: req.file ? req.file.path : null,
-    fileName: req.file ? req.file.originalname : null,
+    filePath: uploaded[0] ? uploaded[0].path : null,
+    fileName: uploaded[0] ? uploaded[0].originalname : null,
+    files: ((b.type || 'texto') === 'midia' && uploaded.length) ? uploaded.map(f => ({ filePath: f.path, fileName: f.originalname })) : undefined,
     pollQuestion: b.pollQuestion || null,
     pollOptions: b.pollOptions ? JSON.parse(b.pollOptions) : [],
     allowMultiple: b.allowMultiple === 'true',
@@ -293,18 +303,22 @@ app.post('/api/campaigns/:id/steps', upload.single('file'), (req, res) => {
 });
 
 // Atualizar etapa
-app.put('/api/campaigns/:id/steps/:stepId', upload.single('file'), (req, res) => {
+app.put('/api/campaigns/:id/steps/:stepId', upload.array('file', 10), (req, res) => {
   const c = store.getCampaign(req.params.id);
   if (!c) return res.status(404).json({ error: 'Campanha não encontrada.' });
   const step = c.steps.find(s => s.id === req.params.stepId);
   if (!step) return res.status(404).json({ error: 'Etapa não encontrada.' });
   const b = req.body;
+  const uploaded = req.files || [];
   if (b.dayOffset !== undefined) step.dayOffset = parseInt(b.dayOffset);
   if (b.time) step.time = b.time;
   if (b.type) step.type = b.type;
   if (b.text !== undefined) step.text = b.text;
   if (b.caption !== undefined) step.caption = b.caption;
-  if (req.file) { step.filePath = req.file.path; step.fileName = req.file.originalname; }
+  if (uploaded.length) {
+    step.filePath = uploaded[0].path; step.fileName = uploaded[0].originalname;
+    step.files = ((b.type || step.type) === 'midia') ? uploaded.map(f => ({ filePath: f.path, fileName: f.originalname })) : undefined;
+  }
   if (b.pollQuestion !== undefined) step.pollQuestion = b.pollQuestion;
   if (b.pollOptions) step.pollOptions = JSON.parse(b.pollOptions);
   if (b.allowMultiple !== undefined) step.allowMultiple = b.allowMultiple === 'true';
@@ -345,9 +359,14 @@ app.post('/api/campaigns/:id/launch', (req, res) => {
         : (a.dayOffset || 0) - (b.dayOffset || 0));
 
     for (const step of normalizedSteps) {
-      // O filePath vem do navegador: só aceita arquivos dentro de media/.
-      if (step.filePath && !path.resolve(String(step.filePath)).startsWith(MEDIA_DIR + path.sep)) {
-        return res.status(400).json({ error: `O arquivo da etapa ${step.order || ''} é inválido. Envie a mídia novamente.` });
+      // Os caminhos vêm do navegador: só aceita arquivos dentro de media/.
+      const stepFiles = (Array.isArray(step.files) && step.files.length)
+        ? step.files.map(f => ({ filePath: f.filePath, fileName: f.fileName || null }))
+        : (step.filePath ? [{ filePath: step.filePath, fileName: step.fileName || null }] : []);
+      for (const f of stepFiles) {
+        if (!f.filePath || !path.resolve(String(f.filePath)).startsWith(MEDIA_DIR + path.sep)) {
+          return res.status(400).json({ error: `O arquivo da etapa ${step.order || ''} é inválido. Envie a mídia novamente.` });
+        }
       }
 
       const sendDate = zgBuildClientDateFromParts(startDate, step.time || '09:00', step.dayOffset || 0, offset);
@@ -366,7 +385,9 @@ app.post('/api/campaigns/:id/launch', (req, res) => {
         id: crypto.randomUUID(), status: 'agendada', type: step.type,
         groupIds, groupNames,
         text: step.text || null, caption: step.caption || null,
-        filePath: step.filePath || null, fileName: step.fileName || null,
+        filePath: stepFiles[0] ? stepFiles[0].filePath : null,
+        fileName: stepFiles[0] ? stepFiles[0].fileName : null,
+        files: (step.type === 'midia' && stepFiles.length) ? stepFiles : undefined,
         pollQuestion: step.pollQuestion || null,
         pollOptions: step.pollOptions || [],
         allowMultiple: !!step.allowMultiple,

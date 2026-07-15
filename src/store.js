@@ -49,12 +49,14 @@ module.exports = {
     if (i === -1) return false; db.jobs.splice(i, 1); save(); return true;
   },
   // Quantos jobs (exceto exceptJobId) e etapas de campanha usam este arquivo
+  // (olha tanto o filePath único quanto a lista files de mensagens multi-arquivo)
   countFileRefs(filePath, exceptJobId) {
     if (!filePath) return 0;
     const db = load();
+    const usa = e => e.filePath === filePath || (e.files || []).some(f => f.filePath === filePath);
     let n = 0;
-    for (const j of db.jobs) if (j.id !== exceptJobId && j.filePath === filePath) n++;
-    for (const c of db.campaigns) for (const s of (c.steps || [])) if (s.filePath === filePath) n++;
+    for (const j of db.jobs) if (j.id !== exceptJobId && usa(j)) n++;
+    for (const c of db.campaigns) for (const s of (c.steps || [])) if (usa(s)) n++;
     return n;
   },
 

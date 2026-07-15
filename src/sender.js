@@ -87,15 +87,23 @@ async function sendToGroup(job, groupId) {
     }
 
     case 'midia': {
-      const media = MessageMedia.fromFilePath(job.filePath);
-      if (humanize && job.caption) {
-        await chat.sendStateTyping();
-        await sleep(typingMs(job.caption));
-        await chat.clearState();
-      } else if (humanize) {
-        await sleep(jitter(1500, 4000));
+      // Uma mensagem pode ter vários arquivos (fotos/vídeos misturados):
+      // envia um por um, legenda e menções só no primeiro.
+      const files = (job.files && job.files.length)
+        ? job.files
+        : [{ filePath: job.filePath, fileName: job.fileName }];
+      for (let i = 0; i < files.length; i++) {
+        const media = MessageMedia.fromFilePath(files[i].filePath);
+        if (i === 0 && humanize && job.caption) {
+          await chat.sendStateTyping();
+          await sleep(typingMs(job.caption));
+          await chat.clearState();
+        } else if (humanize) {
+          await sleep(jitter(1500, 4000));
+        }
+        const opts = i === 0 ? { ...options, caption: job.caption || undefined } : { waitUntilMsgSent: true };
+        await chat.sendMessage(media, opts);
       }
-      await chat.sendMessage(media, { ...options, caption: job.caption || undefined });
       break;
     }
 
@@ -130,10 +138,13 @@ async function sendToGroup(job, groupId) {
 
 async function runJob(job, onProgress) {
   const results = [];
+  // Mensagens com vários arquivos demoram mais: o teto cresce junto.
+  const nFiles = (job.files && job.files.length) || 1;
+  const timeoutMs = TIMEOUT_ENVIO_MS * nFiles;
   for (let i = 0; i < job.groupIds.length; i++) {
     const groupId = job.groupIds[i];
     try {
-      await comTimeout(sendToGroup(job, groupId), TIMEOUT_ENVIO_MS);
+      await comTimeout(sendToGroup(job, groupId), timeoutMs);
       results.push({ groupId, ok: true, at: new Date().toISOString() });
     } catch (e) {
       results.push({ groupId, ok: false, error: e.message, at: new Date().toISOString() });

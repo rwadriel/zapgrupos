@@ -244,7 +244,8 @@
       </div>
       <div class="type-block active" data-block="texto"><label class="field"><span>Mensagem</span><textarea id="text" placeholder="Escreva sua mensagem…"></textarea></label></div>
       <div class="type-block" data-block="midia">
-        <div class="file-drop" id="mediaDrop"><span id="mediaDropText">Clique para escolher uma foto ou vídeo</span><input type="file" id="mediaFile" accept="image/*,video/*" hidden></div>
+        <div class="file-drop" id="mediaDrop"><span id="mediaDropText">Clique para escolher fotos e/ou vídeos (até 10)</span><input type="file" id="mediaFile" accept="image/*,video/*" multiple hidden></div>
+        <p class="hint">Pode escolher vários arquivos de uma vez — vão em sequência na mesma mensagem.</p>
         <label class="field" style="margin-top:16px"><span>Legenda (opcional)</span><textarea id="caption" placeholder="Texto que acompanha a mídia…" style="min-height:64px"></textarea></label>
       </div>
       <div class="type-block" data-block="audio">
@@ -320,8 +321,8 @@ $$('#typeSeg button').forEach(b=>b.addEventListener('click',()=>{
   $$('#typeSeg button').forEach(x=>x.classList.remove('active'));b.classList.add('active');
   currentType=b.dataset.type;$$('.type-block').forEach(tb=>tb.classList.toggle('active',tb.dataset.block===currentType));
 }));
-function wireDrop(d,i,t,l){const drop=$(d),inp=$(i),txt=$(t);drop.addEventListener('click',()=>inp.click());inp.addEventListener('change',()=>{if(inp.files[0]){drop.classList.add('has');txt.textContent='✓ '+inp.files[0].name}else{drop.classList.remove('has');txt.textContent=l}})}
-wireDrop('#mediaDrop','#mediaFile','#mediaDropText','Clique para escolher foto ou vídeo');
+function wireDrop(d,i,t,l){const drop=$(d),inp=$(i),txt=$(t);drop.addEventListener('click',()=>inp.click());inp.addEventListener('change',()=>{const fs=[...inp.files];if(fs.length){drop.classList.add('has');txt.textContent='✓ '+(fs.length===1?fs[0].name:fs.length+' arquivos: '+fs.map(f=>f.name).join(', '))}else{drop.classList.remove('has');txt.textContent=l}})}
+wireDrop('#mediaDrop','#mediaFile','#mediaDropText','Clique para escolher fotos e/ou vídeos (até 10)');
 wireDrop('#audioDrop','#audioFile','#audioDropText','Clique para escolher áudio');
 $('#addPollOpt').addEventListener('click',()=>{const n=$$('#pollOpts .poll-opt').length+1;if(n>12)return toast('Máximo 12 opções.',true);const d=document.createElement('div');d.className='poll-opt';d.innerHTML=`<input type="text" placeholder="Opção ${n}"><span class="rm">×</span>`;$('#pollOpts').appendChild(d)});
 $('#pollOpts').addEventListener('click',e=>{if(e.target.classList.contains('rm')&&$$('#pollOpts .poll-opt').length>2)e.target.parentElement.remove()});
@@ -353,7 +354,7 @@ $('#submitBtn').addEventListener('click',async()=>{
   fd.append('mentionAll',$('#mentionAll').checked);fd.append('humanize',$('#humanize').checked);fd.append('repeat',$('#repeat').value);
   const now=$('#sendNow').checked;fd.append('sendNow',now);if(!now){if(!$('#sendAt').value)return toast('Escolha data/hora.',true);fd.append('sendAt',$('#sendAt').value)}
   if(currentType==='texto'){if(!$('#text').value.trim())return toast('Escreva a mensagem.',true);fd.append('text',$('#text').value)}
-  else if(currentType==='midia'){if(!$('#mediaFile').files[0])return toast('Escolha foto/vídeo.',true);fd.append('file',$('#mediaFile').files[0]);fd.append('caption',$('#caption').value)}
+  else if(currentType==='midia'){if(!$('#mediaFile').files.length)return toast('Escolha foto/vídeo.',true);[...$('#mediaFile').files].forEach(f=>fd.append('file',f));fd.append('caption',$('#caption').value)}
   else if(currentType==='audio'){if(!$('#audioFile').files[0])return toast('Escolha áudio.',true);fd.append('file',$('#audioFile').files[0])}
   else if(currentType==='enquete'){if(!$('#pollQuestion').value.trim())return toast('Escreva a pergunta.',true);const opts=$$('#pollOpts input').map(i=>i.value.trim()).filter(Boolean);if(opts.length<2)return toast('Mínimo 2 opções.',true);fd.append('pollQuestion',$('#pollQuestion').value);fd.append('pollOptions',JSON.stringify(opts));fd.append('allowMultiple',$('#allowMultiple').checked)}
   btn.disabled=true;btn.textContent='Enviando…';
@@ -372,7 +373,7 @@ async function loadQueue(){
 function renderJob(j){
   const el=document.createElement('div');el.className='job';
   const when=new Date(j.sendAt).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'});
-  let body='';if(j.type==='texto')body=esc(j.text||'');else if(j.type==='midia')body='📎 '+esc(j.fileName||'mídia')+(j.caption?' — '+esc(j.caption):'');else if(j.type==='audio')body='🎙️ '+esc(j.fileName||'áudio')+' (nota de voz)';else if(j.type==='enquete')body='📊 '+esc(j.pollQuestion||'')+' — '+(j.pollOptions||[]).length+' opções';
+  let body='';if(j.type==='texto')body=esc(j.text||'');else if(j.type==='midia'){const fls=(j.files&&j.files.length)?j.files:null;body='📎 '+(fls&&fls.length>1?fls.length+' arquivos: '+fls.map(f=>esc(f.fileName||'mídia')).join(', '):esc(j.fileName||'mídia'))+(j.caption?' — '+esc(j.caption):'')}else if(j.type==='audio')body='🎙️ '+esc(j.fileName||'áudio')+' (nota de voz)';else if(j.type==='enquete')body='📊 '+esc(j.pollQuestion||'')+' — '+(j.pollOptions||[]).length+' opções';
   const flags=[];if(j.humanize)flags.push('simulado');if(j.mentionAll)flags.push('menciona todos');if(j.campaignName)flags.push('campanha: '+j.campaignName);
   const done=(j.results||[]).filter(r=>r.ok).length,total=(j.groupIds||[]).length;
   const rs=(j.status==='enviada'||j.status==='parcial'||j.status==='falhou')?' · '+done+'/'+total+' entregues':'';
@@ -466,7 +467,7 @@ function renderCampEdit(){
 function renderStepCard(s,num,campId,isLaunch){
   let body='';
   if(s.type==='texto')body=`<div class="step-content">${esc((s.text||'').substring(0,120))}${(s.text||'').length>120?'…':''}</div>`;
-  else if(s.type==='midia')body=`<div class="step-content">📎 <span class="file-name">${esc(s.fileName||'mídia')}</span>${s.caption?' — '+esc(s.caption.substring(0,60)):''}</div>`;
+  else if(s.type==='midia'){const fls=(s.files&&s.files.length)?s.files:null;body=`<div class="step-content">📎 <span class="file-name">${fls&&fls.length>1?fls.length+' arquivos: '+fls.map(f=>esc(f.fileName||'mídia')).join(', '):esc(s.fileName||'mídia')}</span>${s.caption?' — '+esc(s.caption.substring(0,60)):''}</div>`}
   else if(s.type==='audio')body=`<div class="step-content">🎙️ <span class="file-name">${esc(s.fileName||'áudio')}</span> (nota de voz)</div>`;
   else if(s.type==='enquete')body=`<div class="step-content">📊 ${esc(s.pollQuestion||'')} · ${(s.pollOptions||[]).length} opções</div>`;
   const flags=[];if(s.mentionAll)flags.push('menciona todos');if(s.humanize!==false)flags.push('simulado');
@@ -502,7 +503,7 @@ function openStepForm(campId,step){
   function renderFields(){
     const t=modal.querySelector('#sf-type').value;let h='';
     if(t==='texto')h=`<label class="field"><span>Mensagem</span><textarea id="sf-text" style="min-height:80px">${esc(s.type===t?s.text:'')}</textarea></label>`;
-    else if(t==='midia')h=`<div class="file-drop" id="sf-media-drop"><span>${s.fileName?'✓ '+esc(s.fileName):'Clique para escolher foto/vídeo'}</span><input type="file" id="sf-media-file" accept="image/*,video/*" hidden></div><label class="field" style="margin-top:12px"><span>Legenda</span><textarea id="sf-caption" style="min-height:50px">${esc(s.type===t?s.caption:'')}</textarea></label>`;
+    else if(t==='midia')h=`<div class="file-drop" id="sf-media-drop"><span>${s.files&&s.files.length>1?'✓ '+s.files.length+' arquivos':(s.fileName?'✓ '+esc(s.fileName):'Clique para escolher fotos/vídeos (até 10)')}</span><input type="file" id="sf-media-file" accept="image/*,video/*" multiple hidden></div><label class="field" style="margin-top:12px"><span>Legenda</span><textarea id="sf-caption" style="min-height:50px">${esc(s.type===t?s.caption:'')}</textarea></label>`;
     else if(t==='audio')h=`<div class="file-drop" id="sf-audio-drop"><span>${s.fileName?'✓ '+esc(s.fileName):'Clique para escolher áudio'}</span><input type="file" id="sf-audio-file" accept="audio/*" hidden></div>`;
     else if(t==='enquete'){const opts=s.type===t&&s.pollOptions?.length?s.pollOptions:['',''];
       h=`<label class="field"><span>Pergunta</span><input type="text" id="sf-pollq" value="${esc(s.type===t?s.pollQuestion:'')}"></label><span style="font-size:12.5px;font-weight:600;display:block;margin-bottom:6px">Opções</span><div id="sf-pollopts">${opts.map((o,i)=>`<div class="poll-opt"><input type="text" value="${esc(o)}" placeholder="Opção ${i+1}"><span class="rm">×</span></div>`).join('')}</div><span class="link" id="sf-addopt" style="display:inline-block;margin-top:4px">+ opção</span>
@@ -510,7 +511,7 @@ function openStepForm(campId,step){
     modal.querySelector('#sf-fields').innerHTML=h;
     // wire file drops
     const md=modal.querySelector('#sf-media-drop'),mf=modal.querySelector('#sf-media-file');
-    if(md&&mf){md.addEventListener('click',()=>mf.click());mf.addEventListener('change',()=>{if(mf.files[0])md.querySelector('span').textContent='✓ '+mf.files[0].name})}
+    if(md&&mf){md.addEventListener('click',()=>mf.click());mf.addEventListener('change',()=>{const fs=[...mf.files];if(fs.length)md.querySelector('span').textContent='✓ '+(fs.length===1?fs[0].name:fs.length+' arquivos')})}
     const ad=modal.querySelector('#sf-audio-drop'),af=modal.querySelector('#sf-audio-file');
     if(ad&&af){ad.addEventListener('click',()=>af.click());af.addEventListener('change',()=>{if(af.files[0])ad.querySelector('span').textContent='✓ '+af.files[0].name})}
     modal.querySelector('#sf-addopt')?.addEventListener('click',()=>{const d=document.createElement('div');d.className='poll-opt';d.innerHTML=`<input type="text" placeholder="Opção"><span class="rm">×</span>`;modal.querySelector('#sf-pollopts').appendChild(d)});
@@ -523,7 +524,7 @@ function openStepForm(campId,step){
     const fd=new FormData();fd.append('dayOffset',modal.querySelector('#sf-day').value);fd.append('time',modal.querySelector('#sf-time').value);fd.append('type',t);
     fd.append('mentionAll',modal.querySelector('#sf-mention').checked);fd.append('humanize',modal.querySelector('#sf-humanize').checked);
     if(t==='texto'){const tx=modal.querySelector('#sf-text')?.value;if(!tx?.trim())return toast('Escreva o texto.',true);fd.append('text',tx)}
-    else if(t==='midia'){const f=modal.querySelector('#sf-media-file')?.files[0];if(f)fd.append('file',f);else if(isNew)return toast('Escolha arquivo.',true);fd.append('caption',modal.querySelector('#sf-caption')?.value||'')}
+    else if(t==='midia'){const fl=[...(modal.querySelector('#sf-media-file')?.files||[])];if(fl.length)fl.forEach(f=>fd.append('file',f));else if(isNew)return toast('Escolha arquivo.',true);fd.append('caption',modal.querySelector('#sf-caption')?.value||'')}
     else if(t==='audio'){const f=modal.querySelector('#sf-audio-file')?.files[0];if(f)fd.append('file',f);else if(isNew)return toast('Escolha áudio.',true)}
     else if(t==='enquete'){const q=modal.querySelector('#sf-pollq')?.value;if(!q?.trim())return toast('Escreva a pergunta.',true);fd.append('pollQuestion',q);const opts=[...modal.querySelectorAll('#sf-pollopts input')].map(i=>i.value.trim()).filter(Boolean);if(opts.length<2)return toast('Mínimo 2 opções.',true);fd.append('pollOptions',JSON.stringify(opts));fd.append('allowMultiple',modal.querySelector('#sf-multi')?.checked||false)}
     const url=isNew?`/api/campaigns/${campId}/steps`:`/api/campaigns/${campId}/steps/${step.id}`;
@@ -600,14 +601,14 @@ function openLaunchStepForm(step){
   function renderFields(){
     const t=modal.querySelector('#lf-type').value;let h='';
     if(t==='texto')h=`<label class="field"><span>Mensagem</span><textarea id="lf-text" style="min-height:80px">${esc(s.type===t?s.text:'')}</textarea></label>`;
-    else if(t==='midia')h=`<div class="file-drop" id="lf-media-drop"><span>${s.fileName&&s.type===t?'✓ '+esc(s.fileName):'Clique para escolher'}</span><input type="file" id="lf-media-file" accept="image/*,video/*" hidden></div><label class="field" style="margin-top:12px"><span>Legenda</span><textarea id="lf-caption" style="min-height:50px">${esc(s.type===t?s.caption:'')}</textarea></label>`;
+    else if(t==='midia')h=`<div class="file-drop" id="lf-media-drop"><span>${s.files&&s.files.length>1&&s.type===t?'✓ '+s.files.length+' arquivos':(s.fileName&&s.type===t?'✓ '+esc(s.fileName):'Clique para escolher (até 10)')}</span><input type="file" id="lf-media-file" accept="image/*,video/*" multiple hidden></div><label class="field" style="margin-top:12px"><span>Legenda</span><textarea id="lf-caption" style="min-height:50px">${esc(s.type===t?s.caption:'')}</textarea></label>`;
     else if(t==='audio')h=`<div class="file-drop" id="lf-audio-drop"><span>${s.fileName&&s.type===t?'✓ '+esc(s.fileName):'Clique para escolher'}</span><input type="file" id="lf-audio-file" accept="audio/*" hidden></div>`;
     else if(t==='enquete'){const opts=s.type===t&&s.pollOptions?.length?s.pollOptions:['',''];
       h=`<label class="field"><span>Pergunta</span><input type="text" id="lf-pollq" value="${esc(s.type===t?s.pollQuestion:'')}"></label><div id="lf-pollopts">${opts.map((o,i)=>`<div class="poll-opt"><input type="text" value="${esc(o)}" placeholder="Opção ${i+1}"><span class="rm">×</span></div>`).join('')}</div><span class="link" id="lf-addopt">+ opção</span>
       <label class="opt" style="margin-top:8px"><div class="switch"><input type="checkbox" id="lf-multi" ${s.allowMultiple?'checked':''}><span class="slider"></span></div><div class="txt"><b>Múltiplas respostas</b></div></label>`}
     modal.querySelector('#lf-fields').innerHTML=h;
     const md=modal.querySelector('#lf-media-drop'),mf=modal.querySelector('#lf-media-file');
-    if(md&&mf){md.addEventListener('click',()=>mf.click());mf.addEventListener('change',()=>{if(mf.files[0])md.querySelector('span').textContent='✓ '+mf.files[0].name})}
+    if(md&&mf){md.addEventListener('click',()=>mf.click());mf.addEventListener('change',()=>{const fs=[...mf.files];if(fs.length)md.querySelector('span').textContent='✓ '+(fs.length===1?fs[0].name:fs.length+' arquivos')})}
     const ad=modal.querySelector('#lf-audio-drop'),af=modal.querySelector('#lf-audio-file');
     if(ad&&af){ad.addEventListener('click',()=>af.click());af.addEventListener('change',()=>{if(af.files[0])ad.querySelector('span').textContent='✓ '+af.files[0].name})}
     modal.querySelector('#lf-addopt')?.addEventListener('click',()=>{const d=document.createElement('div');d.className='poll-opt';d.innerHTML=`<input type="text" placeholder="Opção"><span class="rm">×</span>`;modal.querySelector('#lf-pollopts').appendChild(d)});
@@ -620,8 +621,8 @@ function openLaunchStepForm(step){
     s.dayOffset=parseInt(modal.querySelector('#lf-day').value);s.time=modal.querySelector('#lf-time').value;s.type=t;
     s.mentionAll=modal.querySelector('#lf-mention').checked;s.humanize=modal.querySelector('#lf-humanize').checked;
     if(t==='texto'){const tx=modal.querySelector('#lf-text')?.value;if(!tx?.trim())return toast('Escreva.',true);s.text=tx}
-    else if(t==='midia'){const f=modal.querySelector('#lf-media-file')?.files[0];
-      if(f){const fd=new FormData();fd.append('file',f);const r=await fetch('/api/upload',{method:'POST',body:fd});const d=await r.json();if(!r.ok)return toast(d.error,true);s.filePath=d.filePath;s.fileName=d.fileName}else if(isNew&&!s.filePath)return toast('Escolha arquivo.',true);
+    else if(t==='midia'){const fl=[...(modal.querySelector('#lf-media-file')?.files||[])];
+      if(fl.length){const novos=[];for(const f of fl){const fd=new FormData();fd.append('file',f);const r=await fetch('/api/upload',{method:'POST',body:fd});const d=await r.json();if(!r.ok)return toast(d.error,true);novos.push({filePath:d.filePath,fileName:d.fileName})}s.files=novos;s.filePath=novos[0].filePath;s.fileName=novos[0].fileName}else if(isNew&&!s.filePath)return toast('Escolha arquivo.',true);
       s.caption=modal.querySelector('#lf-caption')?.value||''}
     else if(t==='audio'){const f=modal.querySelector('#lf-audio-file')?.files[0];
       if(f){const fd=new FormData();fd.append('file',f);const r=await fetch('/api/upload',{method:'POST',body:fd});const d=await r.json();if(!r.ok)return toast(d.error,true);s.filePath=d.filePath;s.fileName=d.fileName}else if(isNew&&!s.filePath)return toast('Escolha áudio.',true)}
