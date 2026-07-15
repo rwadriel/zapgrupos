@@ -157,8 +157,13 @@ async function listGroups() {
       try {
         chats = await getChatsComTimeout(LISTAR_TIMEOUT_MS);
       } catch (e) {
-        console.log(`[Grupos] Tentativa ${attempt} falhou: ${e.message}`);
-        throw new Error('O WhatsApp demorou demais para responder. Clique em "recarregar"; se continuar, reinicie o app.');
+        // Loga o erro COMPLETO. O whatsapp-web.js minifica as mensagens (ex.: "r"),
+        // então só e.message não diz nada — o nome e o stack ajudam a achar a causa
+        // (normalmente um módulo interno do WhatsApp Web que mudou de nome).
+        console.log(`[Grupos] Tentativa ${attempt} falhou: ${(e && e.name) || 'Erro'}: ${e && e.message}`);
+        if (attempt >= 3 && e && e.stack) console.log('[Grupos] stack:', e.stack);
+        if (attempt < 3) { await new Promise(r => setTimeout(r, 4000)); continue; }
+        throw new Error('Não consegui ler os grupos do WhatsApp (' + ((e && e.message) || 'erro') + '). Clique em "recarregar"; se persistir, o whatsapp-web.js pode precisar de atualização.');
       }
       const groupCount = chats.filter(c => c.isGroup).length;
 
