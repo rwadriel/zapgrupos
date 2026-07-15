@@ -36,30 +36,40 @@ function recordingMs(filePath) {
   }
 }
 
-function normalizeMentionId(participant) {
-  const raw = participant?.id?._serialized || participant?.id || participant?._serialized || '';
-  if (!raw || typeof raw !== 'string') return null;
-  if (!raw.endsWith('@c.us') && !raw.endsWith('@lid')) return null;
-  return raw;
+// Presença ("digitando…"/"gravando…") sem passar pelo getChatById (que quebra
+// no getChatModel). Chama direto o WWebJS.sendChatstate com o id do grupo.
+// Best-effort: se falhar, apenas não mostra o indicador — não impede o envio.
+async function setPresence(groupId, estado) {
+  try {
+    await client.pupPage.evaluate((s, id) => window.WWebJS.sendChatstate(s, id), estado, groupId);
+  } catch (e) { /* presença é só cosmética */ }
 }
 
-async function getMentionsForAll(chat) {
-  if (!chat || !chat.isGroup || !Array.isArray(chat.participants)) return [];
-
-  const myId = client.info?.wid?._serialized;
-  const mentions = chat.participants
-    .map(normalizeMentionId)
-    .filter(Boolean)
-    .filter(id => id !== myId);
-
-  return [...new Set(mentions)];
+// Participantes do grupo para "mencionar todos", lidos direto da página (sem
+// getChatModel, que está quebrado). Retorna [] se não conseguir — nesse caso
+// a mensagem é enviada sem menções, em vez de falhar.
+async function getMentionsForAll(groupId) {
+  try {
+    const ids = await client.pupPage.evaluate((gid) => {
+      let chat = null;
+      try { chat = window.require('WAWebCollections').Chat.get(gid); } catch (e) { return []; }
+      const parts = chat && chat.groupMetadata && chat.groupMetadata.participants;
+      const arr = parts && (parts.getModelsArray ? parts.getModelsArray() : (Array.isArray(parts) ? parts : null));
+      if (!arr) return [];
+      return arr.map(p => (p && p.id && p.id._serialized) || null).filter(Boolean);
+    }, groupId);
+    const myId = client.info?.wid?._serialized;
+    return [...new Set(ids.filter(id => (id.endsWith('@c.us') || id.endsWith('@lid')) && id !== myId))];
+  } catch (e) {
+    return [];
+  }
 }
 
-async function buildSendOptions(job, chat) {
+async function buildSendOptions(job, groupId) {
   const options = { waitUntilMsgSent: true };
 
-  if (job.mentionAll && chat.isGroup) {
-    const mentions = await getMentionsForAll(chat);
+  if (job.mentionAll) {
+    const mentions = await getMentionsForAll(groupId);
     if (mentions.length) options.mentions = mentions;
   }
 
@@ -71,18 +81,21 @@ async function sendToGroup(job, groupId) {
     throw new Error('WhatsApp não está conectado');
   }
 
-  const chat = await client.getChatById(groupId);
+  // Usa client.sendMessage(id, ...) em vez de getChatById().sendMessage():
+  // internamente ele resolve a conversa com getAsModel:false, pulando o
+  // getChatModel do whatsapp-web.js (que está estourando "r" com o WhatsApp
+  // Web atual). O envio em si é idêntico.
   const humanize = job.humanize !== false;
-  const options = await buildSendOptions(job, chat);
+  const options = await buildSendOptions(job, groupId);
 
   switch (job.type) {
     case 'texto': {
       if (humanize) {
-        await chat.sendStateTyping();
+        await setPresence(groupId, 'typing');
         await sleep(typingMs(job.text));
-        await chat.clearState();
+        await setPresence(groupId, 'stop');
       }
-      await chat.sendMessage(job.text, options);
+      await client.sendMessage(groupId, job.text, options);
       break;
     }
 
@@ -95,14 +108,14 @@ async function sendToGroup(job, groupId) {
       for (let i = 0; i < files.length; i++) {
         const media = MessageMedia.fromFilePath(files[i].filePath);
         if (i === 0 && humanize && job.caption) {
-          await chat.sendStateTyping();
+          await setPresence(groupId, 'typing');
           await sleep(typingMs(job.caption));
-          await chat.clearState();
+          await setPresence(groupId, 'stop');
         } else if (humanize) {
           await sleep(jitter(1500, 4000));
         }
         const opts = i === 0 ? { ...options, caption: job.caption || undefined } : { waitUntilMsgSent: true };
-        await chat.sendMessage(media, opts);
+        await client.sendMessage(groupId, media, opts);
       }
       break;
     }
@@ -110,24 +123,24 @@ async function sendToGroup(job, groupId) {
     case 'audio': {
       const media = MessageMedia.fromFilePath(job.filePath);
       if (humanize) {
-        await chat.sendStateRecording();
+        await setPresence(groupId, 'recording');
         await sleep(recordingMs(job.filePath));
-        await chat.clearState();
+        await setPresence(groupId, 'stop');
       }
-      await chat.sendMessage(media, { ...options, sendAudioAsVoice: true });
+      await client.sendMessage(groupId, media, { ...options, sendAudioAsVoice: true });
       break;
     }
 
     case 'enquete': {
       if (humanize) {
-        await chat.sendStateTyping();
+        await setPresence(groupId, 'typing');
         await sleep(typingMs(job.pollQuestion + (job.pollOptions || []).join('')));
-        await chat.clearState();
+        await setPresence(groupId, 'stop');
       }
       const poll = new Poll(job.pollQuestion, job.pollOptions, {
         allowMultipleAnswers: !!job.allowMultiple
       });
-      await chat.sendMessage(poll, options);
+      await client.sendMessage(groupId, poll, options);
       break;
     }
 
