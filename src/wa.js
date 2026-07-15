@@ -20,7 +20,10 @@ const client = new Client({
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable',
     timeout: 90000,
     protocolTimeout: 90000,
-    dumpio: true,
+    // false = não despeja o stderr do Chrome no log (ALSA, GCM DEPRECATED_ENDPOINT,
+    // machine-id etc. são ruído de container sem áudio/dbus, não são erros reais).
+    // Volte para true se precisar depurar o Chrome em si.
+    dumpio: false,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
