@@ -123,17 +123,61 @@ function initialize() {
   });
 }
 
-// getChats() do WhatsApp Web às vezes trava (bug conhecido do Puppeteer):
-// a chamada nunca resolve e, sem teto de tempo, o /api/groups fica pendurado
-// para sempre — o painel espera sem mostrar grupo nem erro. Este teto força
-// a falha para virar um erro visível (o painel recarrega sozinho a cada 3s).
+// Teto de tempo para a listagem: getChats() às vezes trava (bug do Puppeteer)
+// e, sem isto, o /api/groups fica pendurado para sempre — o painel espera sem
+// mostrar grupo nem erro. O teto força a falha para virar um erro visível.
 const LISTAR_TIMEOUT_MS = 25000;
 
-function getChatsComTimeout(ms) {
+function comTimeout(promise, ms, oque) {
   return Promise.race([
-    client.getChats(),
-    new Promise((_, reject) => setTimeout(() => reject(new Error(`getChats travou (timeout ${ms / 1000}s)`)), ms))
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`${oque} travou (timeout ${ms / 1000}s)`)), ms))
   ]);
+}
+
+// Leitura resiliente dos grupos, direto do WhatsApp Web, SEM passar pelo
+// getChatModel() do whatsapp-web.js. Na versão atual da lib, o getChats() monta
+// cada conversa e faz a migração LID/toPn dos participantes; quando o WhatsApp
+// Web muda algo, isso lança um erro minificado ("r") e o Promise.all derruba a
+// lista inteira. Aqui pegamos só o essencial (id, nome, nº de participantes) e
+// ignoramos qualquer conversa que dê erro, em vez de perder todos os grupos.
+async function listGroupsResiliente() {
+  return await client.pupPage.evaluate(() => {
+    let ChatCol = null;
+    try { ChatCol = window.require('WAWebCollections').Chat; } catch (e) { ChatCol = null; }
+    if (!ChatCol || !ChatCol.getModelsArray) return { erro: 'sem_collection', total: 0, grupos: [] };
+
+    const chats = ChatCol.getModelsArray();
+    const grupos = [];
+
+    for (const chat of chats) {
+      try {
+        const id = chat && chat.id && chat.id._serialized;
+        if (!id || id.slice(-5) !== '@g.us') continue;
+
+        let name = '(grupo sem nome)';
+        try {
+          name = chat.formattedTitle
+            || (chat.groupMetadata && chat.groupMetadata.subject)
+            || chat.name || name;
+        } catch (e) {}
+
+        let participants = null;
+        try {
+          const parts = chat.groupMetadata && chat.groupMetadata.participants;
+          if (parts) {
+            const arr = parts.getModelsArray ? parts.getModelsArray()
+              : (typeof parts.length === 'number' ? parts : null);
+            if (arr) participants = arr.length;
+          }
+        } catch (e) {}
+
+        grupos.push({ id, name, participants, isAdmin: false });
+      } catch (e) { /* pula esta conversa e segue */ }
+    }
+
+    return { erro: null, total: chats.length, grupos };
+  });
 }
 
 let listandoGrupos = false;
@@ -151,24 +195,34 @@ async function listGroups() {
   listandoGrupos = true;
 
   try {
-    let chats = [];
+    // 1) Caminho principal: leitura resiliente (não quebra por 1 conversa ruim).
+    try {
+      const r = await comTimeout(listGroupsResiliente(), LISTAR_TIMEOUT_MS, 'getChats');
+      if (r && !r.erro) {
+        console.log(`[Grupos] Resiliente: ${r.total} conversa(s), ${r.grupos.length} grupo(s).`);
+        if (r.grupos.length) {
+          ultimosGrupos = r.grupos.slice().sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+          return ultimosGrupos;
+        }
+      } else {
+        console.log('[Grupos] Resiliente indisponível:', (r && r.erro) || 'desconhecido');
+      }
+    } catch (e) {
+      console.log('[Grupos] Leitura resiliente falhou:', (e && e.message) || e);
+    }
 
+    // 2) Fallback: método original da biblioteca (pode falhar igual, mas não regride).
+    let chats = [];
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        chats = await getChatsComTimeout(LISTAR_TIMEOUT_MS);
+        chats = await comTimeout(client.getChats(), LISTAR_TIMEOUT_MS, 'getChats');
       } catch (e) {
-        // Loga o erro COMPLETO. O whatsapp-web.js minifica as mensagens (ex.: "r"),
-        // então só e.message não diz nada — o nome e o stack ajudam a achar a causa
-        // (normalmente um módulo interno do WhatsApp Web que mudou de nome).
-        console.log(`[Grupos] Tentativa ${attempt} falhou: ${(e && e.name) || 'Erro'}: ${e && e.message}`);
-        if (attempt >= 3 && e && e.stack) console.log('[Grupos] stack:', e.stack);
+        console.log(`[Grupos] Fallback tentativa ${attempt} falhou: ${(e && e.name) || 'Erro'}: ${e && e.message}`);
         if (attempt < 3) { await new Promise(r => setTimeout(r, 4000)); continue; }
-        throw new Error('Não consegui ler os grupos do WhatsApp (' + ((e && e.message) || 'erro') + '). Clique em "recarregar"; se persistir, o whatsapp-web.js pode precisar de atualização.');
+        throw new Error('Não consegui ler os grupos do WhatsApp. Clique em "recarregar"; se persistir, reinicie o app.');
       }
       const groupCount = chats.filter(c => c.isGroup).length;
-
-      console.log(`[Grupos] Tentativa ${attempt}: ${chats.length} conversa(s), ${groupCount} grupo(s).`);
-
+      console.log(`[Grupos] Fallback tentativa ${attempt}: ${chats.length} conversa(s), ${groupCount} grupo(s).`);
       if (groupCount > 0) break;
       if (attempt < 3) await new Promise(r => setTimeout(r, 4000));
     }
