@@ -154,7 +154,7 @@ app.post('/api/upload', upload.single('file'), (req, res) => {
 
 // ===== Status / Conexão =====
 app.get('/api/status', (req, res) => {
-  res.json({ status: wa.state.status, qr: wa.state.qrDataUrl, me: wa.state.me, lastError: wa.state.lastError });
+  res.json({ status: wa.state.status, qr: wa.state.qrDataUrl, me: wa.state.me, lastError: wa.state.lastError, aviso: wa.state.aviso });
 });
 app.post('/api/logout', async (req, res) => { await wa.logout(); res.json({ ok: true }); });
 

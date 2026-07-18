@@ -401,9 +401,12 @@ async function pollStatus(){
 function loadConn(){if(window._ls)renderConn(window._ls);pollStatus()}
 function renderConn(s){
   const p=$('#connPanel');
+  // Aviso persistente (ex.: logout falhou e o aparelho ficou vinculado no
+  // celular, ocupando vaga). Some sozinho quando reconecta com sucesso.
+  const aviso=s.aviso?`<div style="background:var(--amber-soft);color:var(--amber);border:1px solid var(--amber);border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:13.5px"><b>⚠️ Atenção</b><br>${esc(s.aviso)}</div>`:'';
   if(s.status==='conectado'&&s.me){p.innerHTML=`<h2>Conectado</h2><p class="sub">Conta pronta.</p><div class="me-card"><div class="me-avatar">${(s.me.name||'?')[0].toUpperCase()}</div><div><b style="font-family:'Space Grotesk';font-size:16px">${esc(s.me.name)}</b><br><span style="color:var(--muted);font-size:13px">+${esc(s.me.number)}</span></div><button class="btn btn-ghost" id="logoutBtn" style="margin-left:auto">Desconectar</button></div>`;$('#logoutBtn').addEventListener('click',async()=>{if(!confirm('Desconectar?'))return;await fetch('/api/logout',{method:'POST'});toast('Desconectado.');pollStatus()})}
-  else if(s.status==='aguardando_qr'&&s.qr){p.innerHTML=`<h2>Conectar WhatsApp</h2><p class="sub">Escaneie o código.</p><div class="qr-wrap"><img src="${s.qr}"><ol class="qr-steps"><li>1. Abra o WhatsApp</li><li>2. Aparelhos conectados</li><li>3. Conectar um aparelho</li><li>4. Aponte a câmera aqui</li></ol></div>`}
-  else{p.innerHTML=`<h2>${s.status==='desconectado'?'Desconectado':'Conectando…'}</h2><p class="sub">${s.status==='desconectado'?(s.lastError?esc(s.lastError):'Aguardando.'):'QR aparecerá em instantes.'}</p>`}}
+  else if(s.status==='aguardando_qr'&&s.qr){p.innerHTML=`${aviso}<h2>Conectar WhatsApp</h2><p class="sub">Escaneie o código.</p><div class="qr-wrap"><img src="${s.qr}"><ol class="qr-steps"><li>1. Abra o WhatsApp</li><li>2. Aparelhos conectados</li><li>3. Conectar um aparelho</li><li>4. Aponte a câmera aqui</li></ol></div>`}
+  else{p.innerHTML=`${aviso}<h2>${s.status==='desconectado'?'Desconectado':'Conectando…'}</h2><p class="sub">${s.status==='desconectado'?(s.lastError?esc(s.lastError):'Aguardando.'):'QR aparecerá em instantes.'}</p>`}}
 
 // ========================================================================
 // ===== CAMPAIGNS =====

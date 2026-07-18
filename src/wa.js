@@ -8,7 +8,10 @@ const state = {
   status: 'iniciando',
   qrDataUrl: null,
   me: null,
-  lastError: null
+  lastError: null,
+  // Aviso persistente mostrado no painel (não é limpo pelo initialize()).
+  // Usado quando o logout falha e o aparelho continua vinculado no celular.
+  aviso: null
 };
 
 const client = new Client({
@@ -71,6 +74,8 @@ client.on('ready', () => {
   state.status = 'conectado';
   state.qrDataUrl = null;
   state.lastError = null;
+  state.aviso = null;
+  retryDelayMs = RETRY_MIN_MS; // conectou: zera o backoff
 
   state.me = {
     name: client.info?.pushname || 'WhatsApp',
@@ -103,6 +108,13 @@ client.on('auth_failure', (msg) => {
 
 let retryTimer = null;
 
+// Backoff progressivo: antes tentava de 30 em 30s para sempre. Se o WhatsApp
+// estiver recusando a conexão, martelar sem parar só reforça o padrão de
+// automação — agora o intervalo cresce (30s, 1min, 2min... até 15min).
+const RETRY_MIN_MS = 30000;
+const RETRY_MAX_MS = 15 * 60000;
+let retryDelayMs = RETRY_MIN_MS;
+
 function initialize() {
   console.log('[WA] Inicializando WhatsApp...');
   state.status = 'iniciando';
@@ -118,8 +130,10 @@ function initialize() {
     // Sem isto, uma falha na inicialização (Chrome engasgado, rede fora)
     // deixava o sistema "desconectado" para sempre, até reiniciar na mão.
     clearTimeout(retryTimer);
-    retryTimer = setTimeout(initialize, 30000);
-    console.log('[WA] Nova tentativa de conexão em 30s.');
+    const espera = retryDelayMs;
+    retryTimer = setTimeout(initialize, espera);
+    retryDelayMs = Math.min(retryDelayMs * 2, RETRY_MAX_MS);
+    console.log(`[WA] Nova tentativa de conexão em ${Math.round(espera / 1000)}s.`);
   });
 }
 
@@ -249,9 +263,21 @@ async function listGroups() {
 }
 
 async function logout() {
+  // client.logout() é o que DESVINCULA o aparelho em "Aparelhos conectados"
+  // no celular. Ele opera a página do WhatsApp Web, então pode falhar (página
+  // quebrada, sessão morta). Antes o erro era engolido em silêncio e o app já
+  // pedia QR novo: o vínculo antigo ficava pendurado e, depois de ~4 ciclos, o
+  // WhatsApp passava a recusar novos aparelhos. Agora a falha é logada e vira
+  // um aviso na tela, para o aparelho órfão ser removido na mão.
   try {
     await client.logout();
-  } catch {}
+    state.aviso = null;
+    console.log('[WA] Aparelho desvinculado com sucesso.');
+  } catch (e) {
+    state.aviso = 'Não consegui desvincular este aparelho automaticamente. Antes de escanear o QR, remova-o no celular em WhatsApp → Aparelhos conectados — senão a vaga fica ocupada e o WhatsApp acaba recusando novos aparelhos.';
+    console.error('[WA] logout FALHOU:', (e && e.message) || e);
+    console.error('[WA] ' + state.aviso);
+  }
 
   state.status = 'desconectado';
   state.qrDataUrl = null;
