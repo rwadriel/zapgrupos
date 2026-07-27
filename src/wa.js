@@ -1,6 +1,35 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const QRCode = require('qrcode');
 const path = require('path');
+const fs = require('fs');
+
+const SESSION_DIR = path.join(__dirname, '..', '.wwebjs_auth');
+
+// O Chrome tranca a pasta do perfil com arquivos "Singleton*". Se um Chrome
+// anterior não fechou direito, um novo launch falha com "browser is already
+// running for .../session" — e a reconexão fica presa nesse erro para sempre.
+// Isto remove esses locks antes de religar (o Dockerfile já faz no boot; aqui
+// fazemos também em runtime, a cada reconexão).
+function limparLocksDoChrome() {
+  try {
+    const stack = [SESSION_DIR];
+    while (stack.length) {
+      const dir = stack.pop();
+      let itens = [];
+      try { itens = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+      for (const it of itens) {
+        const full = path.join(dir, it.name);
+        if (it.name.startsWith('Singleton')) {
+          try { fs.rmSync(full, { force: true }); console.log('[WA] lock removido:', full); } catch {}
+        } else if (it.isDirectory()) {
+          stack.push(full);
+        }
+      }
+    }
+  } catch (e) {
+    console.log('[WA] limparLocksDoChrome falhou:', e.message);
+  }
+}
 
 console.log('[WA] VERSAO DEFINITIVA: Google Chrome Stable, sem userDataDir, sem single-process, sem crashpad');
 
@@ -115,26 +144,51 @@ const RETRY_MIN_MS = 30000;
 const RETRY_MAX_MS = 15 * 60000;
 let retryDelayMs = RETRY_MIN_MS;
 
-function initialize() {
-  console.log('[WA] Inicializando WhatsApp...');
-  state.status = 'iniciando';
-  state.lastError = null;
+// Trava para não ter dois initialize() rodando ao mesmo tempo — era isso que
+// deixava DOIS Chrome disputando a mesma pasta de sessão ("browser is already
+// running"). Só um fluxo de (re)conexão por vez.
+let conectando = false;
 
-  client.initialize().catch(e => {
+function agendarReconexao() {
+  clearTimeout(retryTimer);
+  const espera = retryDelayMs;
+  retryTimer = setTimeout(reiniciarConexao, espera);
+  retryDelayMs = Math.min(retryDelayMs * 2, RETRY_MAX_MS);
+  console.log(`[WA] Nova tentativa de conexão em ${Math.round(espera / 1000)}s.`);
+}
+
+// Fecha o Chrome anterior e limpa os locks ANTES de subir um novo — evita a
+// colisão de perfil que travava a reconexão.
+async function reiniciarConexao() {
+  if (conectando) { console.log('[WA] Reconexão já em andamento; ignorando.'); return; }
+  conectando = true;
+  clearTimeout(retryTimer);
+  try {
+    try { await client.destroy(); console.log('[WA] Chrome anterior encerrado.'); }
+    catch (e) { console.log('[WA] destroy (ok ignorar):', e.message); }
+
+    limparLocksDoChrome();
+
+    console.log('[WA] Inicializando WhatsApp...');
+    state.status = 'iniciando';
+    state.lastError = null;
+    await client.initialize();
+  } catch (e) {
     state.status = 'desconectado';
     state.qrDataUrl = null;
     state.me = null;
     state.lastError = e.message;
     console.error('[WA] Erro ao inicializar:', e.message);
+    conectando = false;
+    agendarReconexao();
+    return;
+  }
+  conectando = false;
+}
 
-    // Sem isto, uma falha na inicialização (Chrome engasgado, rede fora)
-    // deixava o sistema "desconectado" para sempre, até reiniciar na mão.
-    clearTimeout(retryTimer);
-    const espera = retryDelayMs;
-    retryTimer = setTimeout(initialize, espera);
-    retryDelayMs = Math.min(retryDelayMs * 2, RETRY_MAX_MS);
-    console.log(`[WA] Nova tentativa de conexão em ${Math.round(espera / 1000)}s.`);
-  });
+// Mantido para o boot e chamadas externas; delega para o fluxo guardado.
+function initialize() {
+  reiniciarConexao();
 }
 
 // Teto de tempo para a listagem: getChats() às vezes trava (bug do Puppeteer)
