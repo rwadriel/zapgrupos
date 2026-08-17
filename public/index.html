@@ -406,7 +406,11 @@ function renderConn(s){
   const aviso=s.aviso?`<div style="background:var(--amber-soft);color:var(--amber);border:1px solid var(--amber);border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:13.5px"><b>⚠️ Atenção</b><br>${esc(s.aviso)}</div>`:'';
   if(s.status==='conectado'&&s.me){p.innerHTML=`<h2>Conectado</h2><p class="sub">Conta pronta.</p><div class="me-card"><div class="me-avatar">${(s.me.name||'?')[0].toUpperCase()}</div><div><b style="font-family:'Space Grotesk';font-size:16px">${esc(s.me.name)}</b><br><span style="color:var(--muted);font-size:13px">+${esc(s.me.number)}</span></div><button class="btn btn-ghost" id="logoutBtn" style="margin-left:auto">Desconectar</button></div>`;$('#logoutBtn').addEventListener('click',async()=>{if(!confirm('Desconectar?'))return;await fetch('/api/logout',{method:'POST'});toast('Desconectado.');pollStatus()})}
   else if(s.status==='aguardando_qr'&&s.qr){p.innerHTML=`${aviso}<h2>Conectar WhatsApp</h2><p class="sub">Escaneie o código.</p><div class="qr-wrap"><img src="${s.qr}"><ol class="qr-steps"><li>1. Abra o WhatsApp</li><li>2. Aparelhos conectados</li><li>3. Conectar um aparelho</li><li>4. Aponte a câmera aqui</li></ol></div>`}
-  else{p.innerHTML=`${aviso}<h2>${s.status==='desconectado'?'Desconectado':'Conectando…'}</h2><p class="sub">${s.status==='desconectado'?(s.lastError?esc(s.lastError):'Aguardando.'):'QR aparecerá em instantes.'}</p>`}}
+  else{p.innerHTML=`${aviso}<h2>${s.status==='desconectado'?'Desconectado':'Conectando…'}</h2><p class="sub">${s.status==='desconectado'?(s.lastError?esc(s.lastError):'Aguardando.'):'QR aparecerá em instantes.'}</p>`}
+  // Botão de reset sempre disponível: apaga a sessão e gera QR novo.
+  const rb=document.createElement('button');rb.className='btn btn-ghost btn-sm';rb.style.marginTop='18px';rb.textContent='Resetar conexão (gerar novo QR)';
+  rb.addEventListener('click',async()=>{if(!confirm('Isso apaga a sessão atual e gera um QR novo para escanear. Continuar?'))return;rb.disabled=true;rb.textContent='Resetando…';try{await fetch('/api/reset-connection',{method:'POST'});toast('Sessão limpa. O QR vai aparecer em instantes…')}catch(e){toast('Erro ao resetar.',true)}setTimeout(pollStatus,2500)});
+  p.appendChild(rb);}
 
 // ========================================================================
 // ===== CAMPAIGNS =====

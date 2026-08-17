@@ -157,6 +157,10 @@ app.get('/api/status', (req, res) => {
   res.json({ status: wa.state.status, qr: wa.state.qrDataUrl, me: wa.state.me, lastError: wa.state.lastError, aviso: wa.state.aviso });
 });
 app.post('/api/logout', async (req, res) => { await wa.logout(); res.json({ ok: true }); });
+app.post('/api/reset-connection', async (req, res) => {
+  try { await wa.resetSession(); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // ===== Grupos =====
 app.get('/api/groups', async (req, res) => {

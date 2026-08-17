@@ -342,10 +342,43 @@ async function logout() {
   }, 3000);
 }
 
+// Reset completo: apaga a sessão salva e força um QR novo. Útil quando a
+// sessão está morta/travada (aparelho removido no celular, "browser already
+// running", etc.) e o logout normal não resolve — não depende do WhatsApp Web
+// estar respondendo, porque apaga os arquivos direto.
+async function resetSession() {
+  console.log('[WA] Reset de sessão solicitado.');
+  conectando = true;              // segura reconexões concorrentes durante o reset
+  clearTimeout(retryTimer);
+
+  try { await client.destroy(); } catch (e) { console.log('[WA] destroy no reset (ok ignorar):', e.message); }
+
+  // Apaga o CONTEÚDO de .wwebjs_auth (não a pasta em si, que é volume montado).
+  try {
+    for (const item of fs.readdirSync(SESSION_DIR)) {
+      fs.rmSync(path.join(SESSION_DIR, item), { recursive: true, force: true });
+    }
+    console.log('[WA] Sessão apagada — vai pedir QR novo.');
+  } catch (e) {
+    console.log('[WA] Falha ao apagar sessão (segue mesmo assim):', e.message);
+  }
+
+  state.status = 'iniciando';
+  state.me = null;
+  state.qrDataUrl = null;
+  state.lastError = null;
+  state.aviso = null;
+  retryDelayMs = RETRY_MIN_MS;
+  conectando = false;
+
+  reiniciarConexao();
+}
+
 module.exports = {
   client,
   state,
   initialize,
   listGroups,
-  logout
+  logout,
+  resetSession
 };
