@@ -256,7 +256,26 @@ app.delete('/api/jobs/:id', (req, res) => {
 });
 
 // ===== Campanhas =====
-app.get('/api/campaigns', (req, res) => res.json(store.listCampaigns()));
+app.get('/api/campaigns', (req, res) => {
+  // Cópia (não mutar o que vai pro db.json) anotada com a checagem de mídia:
+  // diz, por etapa, se cada arquivo ainda existe no servidor. Assim dá para
+  // ver no painel se a campanha está pronta para lançar, sem tentar enviar.
+  const camps = JSON.parse(JSON.stringify(store.listCampaigns()));
+  for (const c of camps) {
+    for (const s of (c.steps || [])) {
+      const arqs = (s.files && s.files.length)
+        ? s.files
+        : (s.filePath ? [{ filePath: s.filePath, fileName: s.fileName }] : []);
+      if (!arqs.length) continue;
+      s.filesStatus = arqs.map(f => ({
+        fileName: f.fileName || 'arquivo',
+        exists: !!f.filePath && fs.existsSync(f.filePath)
+      }));
+      s.fileMissing = s.filesStatus.some(f => !f.exists);
+    }
+  }
+  res.json(camps);
+});
 
 app.post('/api/campaigns', (req, res) => {
   const { name, description } = req.body;

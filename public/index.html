@@ -434,7 +434,7 @@ async function renderCampList(){
     else camps.forEach(c=>{
       const days=c.steps.length?Math.max(...c.steps.map(s=>s.dayOffset))+1:0;
       html+=`<div class="camp-card"><h3>${esc(c.name)}</h3>${c.description?`<div class="desc">${esc(c.description)}</div>`:''}
-        <div class="steps-summary">${c.steps.length} etapa(s) · ${days} dia(s)</div>
+        <div class="steps-summary">${c.steps.length} etapa(s) · ${days} dia(s)</div>${(()=>{const n=c.steps.filter(s=>s.fileMissing).length;return n?`<div style="background:var(--red-soft);color:var(--red);border-radius:9px;padding:7px 10px;font-size:12.5px;margin-bottom:10px"><b>⚠️ ${n} etapa(s) com arquivo ausente</b> — clique em Editar e reenvie a mídia antes de lançar.</div>`:''})()}
         <div class="btns"><button class="btn btn-primary btn-sm" data-launch="${c.id}">Lançar</button><button class="btn btn-ghost btn-sm" data-edit="${c.id}">Editar</button><button class="btn btn-danger" data-del="${c.id}">Excluir</button></div></div>`});
     w.innerHTML=html;
     w.querySelector('#newCampBtn')?.addEventListener('click',()=>openCampEdit(null));
@@ -481,7 +481,15 @@ function renderStepCard(s,num,campId,isLaunch){
   else if(s.type==='audio')body=`<div class="step-content">🎙️ <span class="file-name">${esc(s.fileName||'áudio')}</span> (nota de voz)</div>`;
   else if(s.type==='enquete')body=`<div class="step-content">📊 ${esc(s.pollQuestion||'')} · ${(s.pollOptions||[]).length} opções</div>`;
   const flags=[];if(s.mentionAll)flags.push('menciona todos');if(s.humanize!==false)flags.push('simulado');
-  return `<div class="step-card"><div class="step-head"><span class="step-num">${num}</span><span class="step-when">Dia ${s.dayOffset+1}, ${s.time}</span><span class="step-type-badge">${TYPE_ICONS[s.type]||''} ${TYPE_LABELS[s.type]||s.type}</span>${isLaunch?`<span class="step-rm" data-launch-del="${s.id}">×</span>`:`<span class="step-rm" data-delstep="${s.id}">×</span>`}</div>${body}<div class="job-flags" style="margin-top:6px">${flags.map(f=>`<span class="flag">${f}</span>`).join('')}</div>${isLaunch?`<button class="btn btn-ghost btn-sm" data-launch-edit="${s.id}" style="margin-top:8px">Editar conteúdo</button>`:`<button class="btn btn-ghost btn-sm" data-editstep="${s.id}" style="margin-top:8px">Editar</button>`}</div>`;
+  // Checagem de mídia: mostra se o arquivo ainda existe no servidor.
+  let arqBox='';
+  if(s.filesStatus&&s.filesStatus.length){
+    const faltando=s.filesStatus.filter(f=>!f.exists);
+    arqBox=faltando.length
+      ?`<div style="margin-top:8px;background:var(--red-soft);color:var(--red);border-radius:9px;padding:7px 10px;font-size:12.5px"><b>⚠️ Arquivo ausente no servidor:</b> ${faltando.map(f=>esc(f.fileName)).join(', ')} — edite a etapa e envie novamente.</div>`
+      :`<div style="margin-top:8px;color:var(--green-deep);font-size:12.5px">✓ arquivo${s.filesStatus.length>1?'s':''} ok no servidor</div>`;
+  }
+  return `<div class="step-card"><div class="step-head"><span class="step-num">${num}</span><span class="step-when">Dia ${s.dayOffset+1}, ${s.time}</span><span class="step-type-badge">${TYPE_ICONS[s.type]||''} ${TYPE_LABELS[s.type]||s.type}</span>${isLaunch?`<span class="step-rm" data-launch-del="${s.id}">×</span>`:`<span class="step-rm" data-delstep="${s.id}">×</span>`}</div>${body}<div class="job-flags" style="margin-top:6px">${flags.map(f=>`<span class="flag">${f}</span>`).join('')}</div>${arqBox}${isLaunch?`<button class="btn btn-ghost btn-sm" data-launch-edit="${s.id}" style="margin-top:8px">Editar conteúdo</button>`:`<button class="btn btn-ghost btn-sm" data-editstep="${s.id}" style="margin-top:8px">Editar</button>`}</div>`;
 }
 
 async function saveCamp(){
