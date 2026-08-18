@@ -49,6 +49,11 @@ async function processJob(job) {
 
   if (status === 'falhou' || status === 'parcial') {
     const falhas = results.filter(r => !r.ok);
+    // Log do motivo real da falha — sem isto o container só mostrava
+    // "Disparando job..." e o erro ficava escondido dentro do db.json.
+    for (const f of falhas) {
+      console.log(`[Agendador] FALHA job ${job.id} grupo ${f.groupId}: ${f.error}`);
+    }
     heartbeat.notificar(
       status === 'falhou' ? 'ZapGrupos: envio FALHOU' : 'ZapGrupos: envio parcial',
       `${falhas.length} de ${results.length} grupo(s) falharam.\n${descreverJob(job)}\nErro: ${falhas[0]?.error || 'desconhecido'}\nReenvie pela aba Fila.`,

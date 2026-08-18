@@ -371,6 +371,12 @@ app.post('/api/campaigns/:id/launch', (req, res) => {
         if (!f.filePath || !path.resolve(String(f.filePath)).startsWith(MEDIA_DIR + path.sep)) {
           return res.status(400).json({ error: `O arquivo da etapa ${step.order || ''} é inválido. Envie a mídia novamente.` });
         }
+        // Avisa AGORA se a mídia sumiu do disco, em vez de agendar um envio
+        // que vai falhar depois (caso comum: campanha reaproveitando arquivo
+        // antigo que não existe mais no servidor).
+        if (!fs.existsSync(f.filePath)) {
+          return res.status(400).json({ error: `A mídia da etapa ${step.order || ''} (${f.fileName || 'arquivo'}) não existe mais no servidor. Edite a etapa e envie o arquivo novamente antes de lançar.` });
+        }
       }
 
       const sendDate = zgBuildClientDateFromParts(startDate, step.time || '09:00', step.dayOffset || 0, offset);

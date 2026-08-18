@@ -22,6 +22,17 @@ function comTimeout(promise, ms) {
   });
 }
 
+// Carrega a mídia com erro legível. Se o arquivo sumiu do disco (volume
+// /app/media não montado, arquivo apagado), o whatsapp-web.js estoura um
+// ENOENT cru — que não diz ao usuário o que fazer. Campanhas são o caso
+// típico: elas reaproveitam arquivos enviados dias antes.
+function carregarMidia(filePath, fileName) {
+  if (!filePath || !fs.existsSync(filePath)) {
+    throw new Error(`Arquivo não encontrado no servidor: ${fileName || filePath}. Reenvie a mídia (na etapa da campanha, se for campanha). Se isso se repetir após cada deploy, a pasta /app/media não está como volume permanente.`);
+  }
+  return MessageMedia.fromFilePath(filePath);
+}
+
 function typingMs(text) {
   const base = (text || '').length * jitter(45, 75);
   return Math.min(Math.max(base, 2000), 25000);
@@ -106,7 +117,7 @@ async function sendToGroup(job, groupId) {
         ? job.files
         : [{ filePath: job.filePath, fileName: job.fileName }];
       for (let i = 0; i < files.length; i++) {
-        const media = MessageMedia.fromFilePath(files[i].filePath);
+        const media = carregarMidia(files[i].filePath, files[i].fileName);
         if (i === 0 && humanize && job.caption) {
           await setPresence(groupId, 'typing');
           await sleep(typingMs(job.caption));
@@ -121,7 +132,7 @@ async function sendToGroup(job, groupId) {
     }
 
     case 'audio': {
-      const media = MessageMedia.fromFilePath(job.filePath);
+      const media = carregarMidia(job.filePath, job.fileName);
       if (humanize) {
         await setPresence(groupId, 'recording');
         await sleep(recordingMs(job.filePath));
