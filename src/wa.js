@@ -2,8 +2,25 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const QRCode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
+const { execFileSync } = require('child_process');
 
 const SESSION_DIR = path.join(__dirname, '..', '.wwebjs_auth');
+
+// Mata Chrome órfão antes de subir outro. Quando o initialize() falha no meio
+// (ex.: timeout de pareamento), o processo do Chrome CONTINUA vivo, mas o
+// client perde a referência — então destroy() não o fecha. O próximo launch
+// bate em "Failed to create a ProcessSingleton" e vira o erro
+// "browser is already running", que trava a reconexão para sempre.
+// Só roda em Linux (o container): evita matar o Chrome do desenvolvedor no Mac.
+function matarChromeOrfaos() {
+  if (process.platform !== 'linux') return;
+  try {
+    execFileSync('pkill', ['-f', 'google-chrome-stable'], { stdio: 'ignore' });
+    console.log('[WA] Chrome(s) órfão(s) encerrado(s).');
+  } catch (e) {
+    // pkill sai com 1 quando não achou processo — situação normal.
+  }
+}
 
 // O Chrome tranca a pasta do perfil com arquivos "Singleton*". Se um Chrome
 // anterior não fechou direito, um novo launch falha com "browser is already
@@ -47,6 +64,11 @@ const client = new Client({
   authStrategy: new LocalAuth({
     dataPath: path.join(__dirname, '..', '.wwebjs_auth')
   }),
+  // O padrão da lib é 30s para o socket sair de PAIRING/OPENING depois do QR.
+  // Nesta VPS isso estourava ("Waiting failed: 30000ms exceeded"), a init
+  // falhava no meio e deixava um Chrome órfão — que depois travava tudo com
+  // "browser is already running". 2min dá folga para o pareamento concluir.
+  authTimeoutMs: 120000,
   puppeteer: {
     headless: true,
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable',
@@ -167,6 +189,7 @@ async function reiniciarConexao() {
     try { await client.destroy(); console.log('[WA] Chrome anterior encerrado.'); }
     catch (e) { console.log('[WA] destroy (ok ignorar):', e.message); }
 
+    matarChromeOrfaos();
     limparLocksDoChrome();
 
     console.log('[WA] Inicializando WhatsApp...');
