@@ -165,6 +165,8 @@
   .stat .val{font-family:'Space Grotesk';font-size:30px;font-weight:700;letter-spacing:-.02em;margin-top:2px}
   .stat .trend{font-size:12px;color:var(--muted);margin-top:2px}
   .stat.hero{background:linear-gradient(140deg,#2a3618,var(--card) 70%);border-color:#3c4c20}
+  .stats-grid.tres{grid-template-columns:repeat(3,1fr)}
+  @media(max-width:760px){.stats-grid.tres{grid-template-columns:1fr}}
   .stat.hero .val{color:var(--lime)}
   .dash-cols{display:grid;grid-template-columns:1.45fr 1fr;gap:14px;align-items:stretch}
   .chart{display:flex;align-items:stretch;gap:10px;height:150px;margin-top:6px}
@@ -213,6 +215,7 @@
       <button class="tab" data-view="campaigns"><span class="ti">📣</span><span class="tl">Campanhas</span></button>
       <button class="tab" data-view="queue"><span class="ti">🕒</span><span class="tl">Fila <span id="queueCount"></span></span></button>
       <button class="tab" data-view="conn"><span class="ti">📱</span><span class="tl">Conexão</span></button>
+      <button class="tab" data-view="media"><span class="ti">🗂️</span><span class="tl">Biblioteca</span></button>
     </nav>
   </aside>
   <main class="shell">
@@ -293,6 +296,9 @@
 
   <!-- ===== CONNECTION ===== -->
   <section class="view" id="view-conn"><div class="panel" id="connPanel"><div class="empty"><span class="big">Carregando…</span></div></div></section>
+
+  <!-- ===== BIBLIOTECA DE MÍDIA ===== -->
+  <section class="view" id="view-media"><div id="mediaWrap"><div class="empty"><span class="big">Carregando…</span></div></div></section>
   </main>
 </div>
 
@@ -313,6 +319,7 @@ $$('.tab').forEach(tab=>tab.addEventListener('click',()=>{
   if(tab.dataset.view==='dash')loadDash();
   if(tab.dataset.view==='queue')loadQueue();
   if(tab.dataset.view==='conn')loadConn();
+  if(tab.dataset.view==='media')loadMedia();
   if(tab.dataset.view==='campaigns')showCampList();
 }));
 
@@ -414,6 +421,68 @@ function renderConn(s){
   const rb=document.createElement('button');rb.className='btn btn-ghost btn-sm';rb.style.marginTop='18px';rb.textContent='Resetar conexão (gerar novo QR)';
   rb.addEventListener('click',async()=>{if(!confirm('Isso apaga a sessão atual e gera um QR novo para escanear. Continuar?'))return;rb.disabled=true;rb.textContent='Resetando…';try{await fetch('/api/reset-connection',{method:'POST'});toast('Sessão limpa. O QR vai aparecer em instantes…')}catch(e){toast('Erro ao resetar.',true)}setTimeout(pollStatus,2500)});
   p.appendChild(rb);}
+
+// ===== BIBLIOTECA DE MÍDIA =====
+function fmtBytes(b){if(b<1024)return b+' B';if(b<1048576)return (b/1024).toFixed(0)+' KB';return (b/1048576).toFixed(1)+' MB'}
+
+async function loadMedia(){
+  const w=$('#mediaWrap');
+  try{
+    const d=await fetch('/api/media').then(r=>r.json());
+    if(d.error)throw new Error(d.error);
+    const naoUsados=d.arquivos.filter(a=>!a.usos.length);
+    const bytesNaoUsados=naoUsados.reduce((t,a)=>t+a.tamanho,0);
+
+    let html=`<div class="hello"><h2>Biblioteca</h2><p>Tudo que já foi enviado para campanhas e mensagens.</p></div>
+      <div class="stats-grid tres">
+        ${['Arquivos','Espaço usado','Não usados'].map((l,i)=>`<div class="stat${i===2&&naoUsados.length?' hero':''}"><div class="lbl">${l}</div><div class="val">${i===0?d.totalArquivos:i===1?fmtBytes(d.totalBytes):naoUsados.length}</div><div class="trend">${i===2?(naoUsados.length?fmtBytes(bytesNaoUsados)+' liberáveis':'nada a limpar'):''}</div></div>`).join('')}
+      </div>`;
+
+    if(naoUsados.length)html+=`<div class="panel" style="margin-bottom:16px"><div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><div style="flex:1;min-width:200px"><h2>Limpeza rápida</h2><p class="sub" style="margin:0">${naoUsados.length} arquivo(s) não são usados por nenhuma campanha ou mensagem (${fmtBytes(bytesNaoUsados)}).</p></div><button class="btn btn-primary btn-sm" id="limparBtn">Apagar não usados</button></div></div>`;
+
+    if(!d.arquivos.length)html+=`<div class="empty"><span class="big">Nenhum arquivo</span>As mídias que você enviar aparecem aqui.</div>`;
+    else{
+      html+=`<div class="panel"><h2>Arquivos</h2><p class="sub">Mais recentes primeiro. Arquivos em uso são protegidos.</p>`;
+      d.arquivos.forEach(a=>{
+        const dt=new Date(a.criadoEm).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'});
+        const usoTxt=a.usos.length
+          ?a.usos.map(u=>`<span class="flag">${u.tipo==='campanha'?'📣':'✉️'} ${esc(u.nome)}${u.status?' · '+esc(u.status):''}</span>`).join('')
+          :'<span class="flag">não usado</span>';
+        html+=`<div class="step-card"><div class="step-head">
+            <span class="step-type-badge">${esc((a.nome.split('.').pop()||'?').toUpperCase())}</span>
+            <span class="step-when">${esc(a.nomeOriginal||a.nome)}</span>
+            ${a.protegido?'<span class="flag" style="color:var(--amber);border-color:var(--amber)">em uso</span>':''}
+            <span class="step-rm" data-del-media="${esc(a.nome)}" title="Apagar">×</span>
+          </div>
+          <div class="step-content" style="color:var(--muted);font-size:12.5px">${fmtBytes(a.tamanho)} · ${dt}</div>
+          <div class="job-flags" style="margin-top:6px">${usoTxt}</div></div>`;
+      });
+      html+=`</div>`;
+    }
+    w.innerHTML=html;
+
+    w.querySelector('#limparBtn')?.addEventListener('click',async()=>{
+      if(!confirm(`Apagar ${naoUsados.length} arquivo(s) não usado(s)? Libera ${fmtBytes(bytesNaoUsados)}.`))return;
+      const r=await fetch('/api/media/limpar-nao-usados',{method:'POST'}).then(r=>r.json());
+      toast(r.ok?`${r.apagados} arquivo(s) apagado(s) · ${fmtBytes(r.bytes)} liberados.`:'Erro na limpeza.',!r.ok);
+      loadMedia();
+    });
+
+    w.querySelectorAll('[data-del-media]').forEach(b=>b.addEventListener('click',async()=>{
+      const nome=b.dataset.delMedia;
+      if(!confirm('Apagar este arquivo do servidor?'))return;
+      let r=await fetch(`/api/media/${encodeURIComponent(nome)}`,{method:'DELETE'});
+      let dd=await r.json();
+      if(r.status===409){
+        if(!confirm(`Este arquivo ainda é usado por:\n\n${(dd.emUso||[]).join('\n')}\n\nApagar mesmo assim vai fazer esses envios FALHAREM. Continuar?`))return;
+        r=await fetch(`/api/media/${encodeURIComponent(nome)}?force=1`,{method:'DELETE'});
+        dd=await r.json();
+      }
+      toast(r.ok?'Arquivo apagado.':(dd.error||'Erro ao apagar.'),!r.ok);
+      loadMedia();
+    }));
+  }catch(e){w.innerHTML='<div class="empty">Erro ao carregar a biblioteca.</div>'}
+}
 
 // ========================================================================
 // ===== CAMPAIGNS =====

@@ -444,6 +444,79 @@ app.post('/api/campaigns/:id/launch', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ===== Biblioteca de mídia =====
+// Resolve um nome de arquivo vindo do navegador para um caminho seguro dentro
+// de media/. basename() + verificação do prefixo barram path traversal.
+function caminhoSeguroMedia(nome) {
+  const base = path.basename(String(nome || ''));
+  if (!base || base === '.' || base === '..') return null;
+  const full = path.resolve(MEDIA_DIR, base);
+  if (!full.startsWith(MEDIA_DIR + path.sep)) return null;
+  return full;
+}
+
+app.get('/api/media', (req, res) => {
+  try {
+    const usos = store.usosDeArquivos();
+    let arquivos = [];
+    let totalBytes = 0;
+    for (const nome of fs.readdirSync(MEDIA_DIR)) {
+      const full = path.join(MEDIA_DIR, nome);
+      let st;
+      try { st = fs.statSync(full); } catch { continue; }
+      if (!st.isFile()) continue;
+      const lista = usos.get(full) || [];
+      totalBytes += st.size;
+      arquivos.push({
+        nome,
+        nomeOriginal: (lista.find(u => u.fileName) || {}).fileName || null,
+        tamanho: st.size,
+        criadoEm: st.mtime.toISOString(),
+        usos: lista.map(u => ({ tipo: u.tipo, nome: u.nome, status: u.status || null, pendente: !!u.pendente })),
+        protegido: lista.some(u => u.pendente)
+      });
+    }
+    arquivos.sort((a, b) => new Date(b.criadoEm) - new Date(a.criadoEm));
+    res.json({ totalBytes, totalArquivos: arquivos.length, arquivos });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/media/:nome', (req, res) => {
+  const full = caminhoSeguroMedia(req.params.nome);
+  if (!full) return res.status(400).json({ error: 'Nome de arquivo inválido.' });
+  if (!fs.existsSync(full)) return res.status(404).json({ error: 'Arquivo não encontrado.' });
+
+  const lista = store.usosDeArquivos().get(full) || [];
+  const pendentes = lista.filter(u => u.pendente);
+  // Sem ?force=1, recusa apagar o que ainda vai ser usado — apagar aqui é
+  // exatamente o que faz uma campanha falhar na hora do envio.
+  if (pendentes.length && req.query.force !== '1') {
+    return res.status(409).json({
+      error: 'Arquivo em uso.',
+      emUso: pendentes.map(u => u.nome)
+    });
+  }
+  try { fs.unlinkSync(full); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Limpeza em lote: apaga só o que não é usado por ninguém.
+app.post('/api/media/limpar-nao-usados', (req, res) => {
+  try {
+    const usos = store.usosDeArquivos();
+    let apagados = 0, bytes = 0;
+    for (const nome of fs.readdirSync(MEDIA_DIR)) {
+      const full = path.join(MEDIA_DIR, nome);
+      let st;
+      try { st = fs.statSync(full); } catch { continue; }
+      if (!st.isFile()) continue;
+      if ((usos.get(full) || []).length) continue;
+      try { fs.unlinkSync(full); apagados++; bytes += st.size; } catch {}
+    }
+    res.json({ ok: true, apagados, bytes });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ===== Histórico de lançamentos =====
 app.get('/api/launches', (req, res) => res.json(store.listLaunches()));
 

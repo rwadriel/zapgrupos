@@ -60,6 +60,49 @@ module.exports = {
     return n;
   },
 
+  // Mapa arquivo -> quem usa. Usado pela Biblioteca para dizer se é seguro
+  // apagar. Etapa de campanha conta como uso "pendente" (é template: apagar
+  // quebra os próximos lançamentos), assim como job ainda não enviado.
+  usosDeArquivos() {
+    const db = load();
+    const map = new Map();
+    const arquivosDe = (e) => (e.files && e.files.length)
+      ? e.files
+      : (e.filePath ? [{ filePath: e.filePath, fileName: e.fileName }] : []);
+    const add = (fp, uso) => {
+      if (!fp) return;
+      const arr = map.get(fp) || [];
+      arr.push(uso);
+      map.set(fp, arr);
+    };
+
+    for (const j of db.jobs) {
+      const pendente = j.status === 'agendada' || j.status === 'enviando';
+      for (const f of arquivosDe(j)) {
+        add(f.filePath, {
+          tipo: 'mensagem',
+          nome: j.campaignName ? `${j.campaignName} — etapa ${j.stepOrder || '?'}` : 'Mensagem avulsa',
+          status: j.status,
+          fileName: f.fileName,
+          pendente
+        });
+      }
+    }
+    for (const c of db.campaigns) {
+      for (const s of (c.steps || [])) {
+        for (const f of arquivosDe(s)) {
+          add(f.filePath, {
+            tipo: 'campanha',
+            nome: `${c.name} — etapa ${s.order || '?'}`,
+            fileName: f.fileName,
+            pendente: true
+          });
+        }
+      }
+    }
+    return map;
+  },
+
   // ---------- Campanhas ----------
   listCampaigns() { return load().campaigns.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR')); },
   getCampaign(id) { return load().campaigns.find(c => c.id === id) || null; },
