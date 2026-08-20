@@ -428,7 +428,10 @@ function fmtBytes(b){if(b<1024)return b+' B';if(b<1048576)return (b/1024).toFixe
 async function loadMedia(){
   const w=$('#mediaWrap');
   try{
-    const d=await fetch('/api/media').then(r=>r.json());
+    const [d,diag]=await Promise.all([
+      fetch('/api/media').then(r=>r.json()),
+      fetch('/api/diagnostico').then(r=>r.json()).catch(()=>null)
+    ]);
     if(d.error)throw new Error(d.error);
     const naoUsados=d.arquivos.filter(a=>!a.usos.length);
     const bytesNaoUsados=naoUsados.reduce((t,a)=>t+a.tamanho,0);
@@ -437,6 +440,18 @@ async function loadMedia(){
       <div class="stats-grid tres">
         ${['Arquivos','Espaço usado','Não usados'].map((l,i)=>`<div class="stat${i===2&&naoUsados.length?' hero':''}"><div class="lbl">${l}</div><div class="val">${i===0?d.totalArquivos:i===1?fmtBytes(d.totalBytes):naoUsados.length}</div><div class="trend">${i===2?(naoUsados.length?fmtBytes(bytesNaoUsados)+' liberáveis':'nada a limpar'):''}</div></div>`).join('')}
       </div>`;
+
+    // Persistência: só faz sentido no container (Linux). Volume ausente = os
+    // arquivos e agendamentos somem a cada deploy.
+    if(diag&&diag.linux&&diag.volumes){
+      const faltando=diag.volumes.filter(v=>v.persistente===false);
+      if(faltando.length)html+=`<div class="panel" style="margin-bottom:16px;border-color:var(--red)">
+        <h2 style="color:var(--red)">⚠️ Dados sem volume permanente</h2>
+        <p class="sub">Isto apaga tudo a cada deploy — é o que faz mídia sumir e campanha de vários dias enviar só o primeiro dia. No EasyPanel, aba <b>Mounts</b>, adicione:</p>
+        ${faltando.map(v=>`<div class="next-item"><span class="ni-ico">📁</span><div class="ni-txt"><b>${esc(v.montar)}</b><small>${esc(v.nome)} — ${esc(v.guarda)}</small></div><span class="job-status st-falhou">sem volume</span></div>`).join('')}
+      </div>`;
+      else html+=`<div class="panel" style="margin-bottom:16px"><h2>✓ Dados permanentes</h2><p class="sub" style="margin:0">Mídias, fila/campanhas e sessão do WhatsApp estão em volumes — sobrevivem a deploys.</p></div>`;
+    }
 
     if(naoUsados.length)html+=`<div class="panel" style="margin-bottom:16px"><div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><div style="flex:1;min-width:200px"><h2>Limpeza rápida</h2><p class="sub" style="margin:0">${naoUsados.length} arquivo(s) não são usados por nenhuma campanha ou mensagem (${fmtBytes(bytesNaoUsados)}).</p></div><button class="btn btn-primary btn-sm" id="limparBtn">Apagar não usados</button></div></div>`;
 

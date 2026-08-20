@@ -9,7 +9,12 @@ let running = false;
 // Job atrasado além deste limite não dispara mais: vira "expirada" (ou pula
 // para a próxima ocorrência, se for recorrente). Evita rajada de mensagens
 // velhas quando o servidor/WhatsApp fica um bom tempo fora do ar.
-const MAX_ATRASO_MS = Math.max(1, Number(process.env.ZG_MAX_ATRASO_MINUTOS) || 5) * 60000;
+//
+// Era 5min, o que descartava etapas de campanha por qualquer instabilidade
+// curta (reinício de container, reconexão do WhatsApp) — foi o que fez
+// campanhas de vários dias enviarem só o primeiro dia. 60min tolera essas
+// quedas e ainda evita disparar mensagem de horas atrás.
+const MAX_ATRASO_MS = Math.max(1, Number(process.env.ZG_MAX_ATRASO_MINUTOS) || 60) * 60000;
 
 function descreverJob(job) {
   const quando = new Date(job.sendAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });

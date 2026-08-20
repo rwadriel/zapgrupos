@@ -121,6 +121,32 @@ client.on('authenticated', () => {
   console.log('[WA] Autenticado, carregando sessão...');
 });
 
+// O WhatsApp manda as notificações para o aparelho que ele considera "ativo".
+// Como este painel deixa a sessão web ligada 24h, o celular PARA de notificar
+// as mensagens novas. Marcar a sessão como ausente (presence unavailable)
+// devolve as notificações ao telefone sem derrubar a conexão — o envio segue
+// funcionando normal. Desligue com ZG_MANTER_NOTIFICACOES=0 se preferir.
+const MANTER_NOTIFICACOES = process.env.ZG_MANTER_NOTIFICACOES !== '0';
+let presencaTimer = null;
+
+async function marcarSessaoComoAusente() {
+  if (!MANTER_NOTIFICACOES || state.status !== 'conectado') return;
+  try { await client.sendPresenceUnavailable(); }
+  catch (e) { /* best-effort: não pode atrapalhar o envio */ }
+}
+
+function manterNotificacoesNoCelular() {
+  if (!MANTER_NOTIFICACOES) {
+    console.log('[WA] Presença ativa (ZG_MANTER_NOTIFICACOES=0): o celular pode parar de notificar.');
+    return;
+  }
+  clearInterval(presencaTimer);
+  marcarSessaoComoAusente();
+  // Reafirma periodicamente: enviar mensagem/"digitando" reativa a presença.
+  presencaTimer = setInterval(marcarSessaoComoAusente, 60000);
+  console.log('[WA] Sessão marcada como ausente — notificações seguem chegando no celular.');
+}
+
 client.on('ready', () => {
   state.status = 'conectado';
   state.qrDataUrl = null;
@@ -132,6 +158,8 @@ client.on('ready', () => {
     name: client.info?.pushname || 'WhatsApp',
     number: client.info?.wid?.user || ''
   };
+
+  manterNotificacoesNoCelular();
 
   console.log(`[WA] Conectado como ${state.me.name} (${state.me.number}).`);
   console.log('[WA] Sincronizando conversas... aguarde alguns segundos e clique em "recarregar".');

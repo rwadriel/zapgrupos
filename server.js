@@ -444,6 +444,26 @@ app.post('/api/campaigns/:id/launch', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ===== Diagnóstico de persistência =====
+// Uma pasta montada como volume Docker fica em outro dispositivo de bloco que
+// o sistema de arquivos do container. Comparar st_dev diz, sem adivinhação, se
+// os dados sobrevivem a um redeploy — a causa clássica de "sumiu a mídia" e de
+// "a campanha só enviou o primeiro dia" (agendamentos apagados no deploy).
+function checarPersistencia(dir) {
+  try {
+    return fs.statSync(dir).dev !== fs.statSync(__dirname).dev;
+  } catch { return null; }
+}
+
+app.get('/api/diagnostico', (req, res) => {
+  const alvos = [
+    { nome: 'Mídias', caminho: path.join(__dirname, 'media'), montar: '/app/media', guarda: 'fotos, vídeos e áudios' },
+    { nome: 'Fila e campanhas', caminho: path.join(__dirname, 'data'), montar: '/app/data', guarda: 'agendamentos, campanhas e login' },
+    { nome: 'Sessão do WhatsApp', caminho: path.join(__dirname, '.wwebjs_auth'), montar: '/app/.wwebjs_auth', guarda: 'o QR escaneado' }
+  ].map(a => ({ ...a, persistente: checarPersistencia(a.caminho) }));
+  res.json({ linux: process.platform === 'linux', volumes: alvos });
+});
+
 // ===== Biblioteca de mídia =====
 // Resolve um nome de arquivo vindo do navegador para um caminho seguro dentro
 // de media/. basename() + verificação do prefixo barram path traversal.
