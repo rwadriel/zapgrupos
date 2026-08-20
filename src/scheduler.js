@@ -116,7 +116,15 @@ async function tick() {
         continue;
       }
       console.log(`[Agendador] Disparando job ${job.id} (${job.type}) para ${job.groupIds.length} grupo(s).`);
-      await processJob(job);
+      // try/catch POR JOB: antes o try envolvia o laço inteiro, então uma
+      // exceção em um job abandonava todos os seguintes daquele ciclo — numa
+      // campanha de vários dias, um erro no dia 1 podia travar os dias 2 e 3.
+      try {
+        await processJob(job);
+      } catch (e) {
+        console.error(`[Agendador] Job ${job.id} estourou (os demais continuam):`, e.message);
+        try { store.updateJob(job.id, { status: 'falhou', results: [{ ok: false, error: e.message, at: new Date().toISOString() }] }); } catch {}
+      }
     }
   } catch (e) {
     console.error('[Agendador] Erro:', e.message);
@@ -139,4 +147,4 @@ function start() {
   console.log(`[Agendador] Ativo — verificando a fila a cada 15s (atraso máximo tolerado: ${MAX_ATRASO_MS / 60000}min).`);
 }
 
-module.exports = { start, processJob };
+module.exports = { start, processJob, tick };
