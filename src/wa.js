@@ -393,52 +393,50 @@ async function logout() {
   }, 3000);
 }
 
-// Diagnóstico da prévia de link: compara o que a API do WhatsApp devolve com
-// os campos de uma mensagem REAL que já tem prévia funcionando (uma enviada
-// pelo celular, por exemplo). Assim descobrimos o nome e o formato exatos do
-// campo da imagem, em vez de adivinhar. Só lê estrutura (nomes/tipos/tamanhos),
-// não o conteúdo das conversas.
+// Diagnóstico da prévia de link. A resposta do getLinkPreview vem com
+// isLoading e thumbnail vazio — ou seja, ela retorna ANTES de terminar.
+// Aqui chamamos várias vezes ao longo do tempo para ver se os campos da
+// imagem (thumbnailDirectPath/Sha256/Width/Height, que as mensagens com
+// prévia completa possuem) aparecem depois que o carregamento conclui.
 async function inspecionarPrevia(url) {
   return await client.pupPage.evaluate(async (u) => {
-    const out = { api: null, exemplos: [], totalMensagens: 0 };
-
-    // 1) o que a API devolve para esta URL
-    try {
-      const { findLink } = window.require('WALinkify');
-      const link = findLink(u);
-      const p = link ? await window.require('WAWebLinkPreviewChatAction').getLinkPreview(link) : null;
-      const d = (p && p.data) || p || null;
-      out.api = d
-        ? Object.keys(d).map(k => {
-            const v = d[k];
-            const tipo = v === null ? 'null' : (v && v.byteLength !== undefined ? 'binario' : Array.isArray(v) ? 'array' : typeof v);
-            const tam = typeof v === 'string' ? v.length : (v && v.byteLength) || (Array.isArray(v) ? v.length : undefined);
-            return tam !== undefined ? `${k}:${tipo}(${tam})` : `${k}:${tipo}`;
-          })
-        : 'sem dados';
-    } catch (e) { out.api = 'erro: ' + (e && e.message); }
-
-    // 2) mensagens já existentes que TÊM prévia funcionando
-    try {
-      const msgs = window.require('WAWebCollections').Msg.getModelsArray();
-      out.totalMensagens = msgs.length;
-      const comPrevia = msgs.filter(m => m && (m.subtype === 'url' || m.matchedText || m.canonicalUrl));
-      for (const m of comPrevia.slice(-3)) {
-        const campos = Object.keys(m).concat(Object.keys(m.__x_data || {}));
-        const relevantes = [...new Set(campos)].filter(k => /thumb|image|preview|title|description|canonical|matched|subtype|url/i.test(k));
-        out.exemplos.push({
-          deQuem: m.id && m.id.fromMe ? 'enviada por mim' : 'recebida',
-          campos: relevantes.map(k => {
-            const v = m[k];
-            const tipo = v === null || v === undefined ? 'vazio' : (v && v.byteLength !== undefined ? 'binario' : typeof v);
-            const tam = typeof v === 'string' ? v.length : (v && v.byteLength) || undefined;
-            return tam !== undefined ? `${k}:${tipo}(${tam})` : `${k}:${tipo}`;
-          })
-        });
+    const dormir = ms => new Promise(r => setTimeout(r, ms));
+    const resumo = (d) => {
+      if (!d) return 'sem dados';
+      const chaves = ['isLoading', 'title', 'thumbnail', 'thumbnailDirectPath', 'thumbnailSha256', 'thumbnailWidth', 'thumbnailHeight', 'richPreviewType'];
+      const o = {};
+      for (const k of chaves) {
+        const v = d[k];
+        o[k] = v === undefined ? '—'
+          : (typeof v === 'string' ? (v.length > 40 ? `str(${v.length})` : (v || '(vazio)')) : v);
       }
-    } catch (e) { out.exemplos = 'erro: ' + (e && e.message); }
+      o.todosOsCampos = Object.keys(d).length;
+      return o;
+    };
 
-    return out;
+    const { findLink } = window.require('WALinkify');
+    const link = findLink(u);
+    if (!link) return { erro: 'link não reconhecido' };
+    const acao = window.require('WAWebLinkPreviewChatAction');
+
+    const linha = [];
+    for (const espera of [0, 2000, 3000, 5000, 5000, 10000]) {
+      if (espera) await dormir(espera);
+      let d = null, erro = null;
+      try {
+        const p = await acao.getLinkPreview(link);
+        d = (p && p.data) || p || null;
+      } catch (e) { erro = String(e && e.message || e); }
+      linha.push({ apos: linha.length ? linha[linha.length - 1].apos + espera : 0, dados: erro || resumo(d) });
+      // se a imagem já apareceu, não precisa esperar mais
+      if (d && (d.thumbnailDirectPath || (d.thumbnail && d.thumbnail.length))) break;
+    }
+
+    // funções disponíveis no módulo (procurando algo que gere/suba a miniatura)
+    let funcoes = [];
+    try { funcoes = Object.keys(acao).filter(k => typeof acao[k] === 'function'); } catch (e) {}
+
+    return { evolucao: linha, funcoesDoModulo: funcoes };
   }, url);
 }
 
