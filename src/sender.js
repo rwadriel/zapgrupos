@@ -76,36 +76,112 @@ async function getMentionsForAll(groupId) {
   }
 }
 
-// Diagnóstico da prévia de link (aquele cartão com imagem/título).
-// A lib já pede prévia por padrão, chamando a API interna do WhatsApp Web —
-// e a própria doc dela avisa que isso "não tem efeito em contas
-// multi-dispositivo". Como o link está indo seco, este teste mostra no log o
-// que a API responde de fato neste ambiente. É só observação: roda em
-// try/catch e nunca altera nem bloqueia o envio.
-async function diagnosticarPreviaDeLink(texto) {
-  if (!texto || !/https?:\/\//i.test(texto)) return;
+// ===== Prévia de link com imagem =====
+// A prévia da lib já traz título/descrição (vem do getLinkPreview do WhatsApp
+// Web), mas SEM a imagem — por isso o cartão ia "pela metade". O WhatsApp
+// exige a miniatura embutida no campo jpegThumbnail; o cliente oficial baixa
+// a imagem e anexa, passo que a lib não faz. Aqui buscamos a og:image do site
+// e geramos essa miniatura.
+//
+// Vai em options.extraOptions porque a lib espalha extraOptions POR ÚLTIMO ao
+// montar a mensagem — assim a miniatura não é sobrescrita pela prévia dela.
+// Tudo best-effort: qualquer falha volta ao comportamento atual (cartão sem
+// imagem), nunca impede o envio.
+const UA_NAVEGADOR = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
+const PREVIA_LARGURA_MAX = 640;
+
+function primeiroLink(texto) {
+  const m = String(texto || '').match(/https?:\/\/[^\s<>"']+/i);
+  return m ? m[0].replace(/[.,;:!?)\]]+$/, '') : null;
+}
+
+function extrairOgImage(html, baseUrl) {
+  // procura og:image e, como reserva, twitter:image (com atributos em qualquer ordem)
+  const padroes = [
+    /<meta[^>]+(?:property|name)=["']og:image(?::secure_url|:url)?["'][^>]*>/gi,
+    /<meta[^>]+(?:property|name)=["']twitter:image(?::src)?["'][^>]*>/gi
+  ];
+  for (const re of padroes) {
+    const tags = html.match(re);
+    if (!tags) continue;
+    for (const tag of tags) {
+      const c = tag.match(/content=["']([^"']+)["']/i);
+      if (c && c[1]) {
+        try { return new URL(c[1], baseUrl).href; } catch { /* url inválida */ }
+      }
+    }
+  }
+  return null;
+}
+
+async function buscarUrlDaImagem(link) {
+  const res = await fetch(link, {
+    headers: { 'User-Agent': UA_NAVEGADOR, Accept: 'text/html,application/xhtml+xml' },
+    redirect: 'follow',
+    signal: AbortSignal.timeout(8000)
+  });
+  if (!res.ok) return null;
+  if (!/text\/html/i.test(res.headers.get('content-type') || '')) return null;
+  const html = (await res.text()).slice(0, 400000); // og:* fica no <head>
+  return extrairOgImage(html, res.url || link);
+}
+
+async function baixarImagemComoDataUrl(urlImagem) {
+  const res = await fetch(urlImagem, {
+    headers: { 'User-Agent': UA_NAVEGADOR, Accept: 'image/*' },
+    redirect: 'follow',
+    signal: AbortSignal.timeout(8000)
+  });
+  if (!res.ok) return null;
+  const tipo = res.headers.get('content-type') || 'image/jpeg';
+  if (!/^image\//i.test(tipo)) return null;
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (!buf.length || buf.length > 8 * 1024 * 1024) return null;
+  return `data:${tipo};base64,${buf.toString('base64')}`;
+}
+
+// Redimensiona e converte para JPEG usando o canvas da própria página (evita
+// depender de biblioteca nativa de imagem no servidor).
+async function gerarMiniatura(dataUrl) {
+  return await client.pupPage.evaluate(async (src, maxW) => {
+    const img = new Image();
+    await new Promise((ok, falha) => {
+      img.onload = ok;
+      img.onerror = () => falha(new Error('imagem não decodificou'));
+      img.src = src;
+    });
+    const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+    if (!w || !h) throw new Error('imagem sem dimensões');
+    const escala = Math.min(1, maxW / w);
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(w * escala));
+    c.height = Math.max(1, Math.round(h * escala));
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', 0.72).split(',')[1];
+  }, dataUrl, PREVIA_LARGURA_MAX);
+}
+
+async function miniaturaDoLink(texto) {
+  const link = primeiroLink(texto);
+  if (!link) return null;
   try {
-    const r = await client.pupPage.evaluate(async (t) => {
-      let link = null;
-      try {
-        const { findLink } = window.require('WALinkify');
-        link = findLink(t);
-      } catch (e) { return { etapa: 'WALinkify', erro: String(e && e.message || e) }; }
-      if (!link) return { etapa: 'findLink', resultado: 'nenhum link reconhecido' };
-      try {
-        const p = await window.require('WAWebLinkPreviewChatAction').getLinkPreview(link);
-        return {
-          etapa: 'getLinkPreview',
-          link: String(link.href || link),
-          respostaVazia: !p,
-          temData: !!(p && p.data),
-          campos: p && p.data ? Object.keys(p.data).slice(0, 12) : (p ? Object.keys(p).slice(0, 12) : null)
-        };
-      } catch (e) { return { etapa: 'getLinkPreview', erro: String(e && e.message || e) }; }
-    }, texto);
-    console.log('[Prévia de link]', JSON.stringify(r));
+    const urlImagem = await buscarUrlDaImagem(link);
+    if (!urlImagem) {
+      console.log('[Prévia de link] sem og:image em', link);
+      return null;
+    }
+    const dataUrl = await baixarImagemComoDataUrl(urlImagem);
+    if (!dataUrl) {
+      console.log('[Prévia de link] não baixou a imagem:', urlImagem);
+      return null;
+    }
+    const jpeg = await gerarMiniatura(dataUrl);
+    if (!jpeg) return null;
+    console.log(`[Prévia de link] miniatura pronta para ${link} (${Math.round(jpeg.length / 1024)}KB)`);
+    return jpeg;
   } catch (e) {
-    console.log('[Prévia de link] diagnóstico falhou:', e.message);
+    console.log('[Prévia de link] falhou (envia sem imagem):', e.message);
+    return null;
   }
 }
 
@@ -139,8 +215,9 @@ async function sendToGroup(job, groupId) {
         await sleep(typingMs(job.text));
         await setPresence(groupId, 'stop');
       }
-      await diagnosticarPreviaDeLink(job.text);
-      await client.sendMessage(groupId, job.text, options);
+      const jpegThumbnail = await miniaturaDoLink(job.text);
+      await client.sendMessage(groupId, job.text,
+        jpegThumbnail ? { ...options, extraOptions: { jpegThumbnail } } : options);
       break;
     }
 
