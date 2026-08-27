@@ -161,6 +161,57 @@ async function gerarMiniatura(dataUrl) {
   }, dataUrl, PREVIA_LARGURA_MAX);
 }
 
+// Quanto esperar a prévia carregar antes de enviar — o mesmo que uma pessoa
+// faz: cola o link, vê o cartão montar e só então aperta enviar. O WhatsApp
+// devolve título/descrição na hora, mas a IMAGEM chega depois; enviar no
+// mesmo instante manda o cartão sem foto.
+const ESPERA_PREVIA_MS = Math.max(0, Number(process.env.ZG_ESPERA_PREVIA_SEGUNDOS) || 12) * 1000;
+
+// A prévia fica em cache na página do WhatsApp. Numa mensagem para vários
+// grupos, só o primeiro precisa esperar a imagem carregar; os seguintes já
+// pegam pronto. Sem isto, cada grupo somaria +12s à fila à toa.
+const linksAquecidos = new Map();
+const VALIDADE_AQUECIMENTO_MS = 5 * 60000;
+
+function jaAquecido(link) {
+  const t = linksAquecidos.get(link);
+  if (t && Date.now() - t < VALIDADE_AQUECIMENTO_MS) return true;
+  linksAquecidos.set(link, Date.now());
+  // limpeza simples para o mapa não crescer sem limite
+  if (linksAquecidos.size > 200) {
+    for (const [k, v] of linksAquecidos) if (Date.now() - v > VALIDADE_AQUECIMENTO_MS) linksAquecidos.delete(k);
+  }
+  return false;
+}
+
+// Pede a prévia ao WhatsApp Web (aquece o cache dele, como colar no campo de
+// digitação) e conta o que veio. Só observa — nunca interrompe o envio.
+async function consultarPrevia(texto) {
+  try {
+    return await client.pupPage.evaluate(async (t) => {
+      let link = null;
+      try {
+        const { findLink } = window.require('WALinkify');
+        link = findLink(t);
+      } catch (e) { return { erro: 'WALinkify: ' + (e && e.message) }; }
+      if (!link) return { semLink: true };
+      try {
+        const p = await window.require('WAWebLinkPreviewChatAction').getLinkPreview(link);
+        const d = (p && p.data) || p || null;
+        const campos = d ? Object.keys(d) : [];
+        return {
+          campos,
+          // algum campo de imagem? (thumbnail, jpegThumbnail, imageUrl...)
+          temImagem: campos.some(k => /thumb|image/i.test(k) && d[k]),
+          vazio: !d
+        };
+      } catch (e) { return { erro: 'getLinkPreview: ' + (e && e.message) }; }
+    }, texto);
+  } catch (e) {
+    return { erro: e.message };
+  }
+}
+
 async function miniaturaDoLink(texto) {
   const link = primeiroLink(texto);
   if (!link) return null;
@@ -210,14 +261,39 @@ async function sendToGroup(job, groupId) {
 
   switch (job.type) {
     case 'texto': {
+      const link = primeiroLink(job.text);
+
+      // 1) Dispara a busca da prévia ANTES da espera — é o equivalente a colar
+      //    o link no campo de digitação e deixar o WhatsApp trabalhar.
+      const antes = link ? await consultarPrevia(job.text) : null;
+
+      // 2) Espera. Com "simular envio" ligado, o tempo de "digitando..." já
+      //    serve; se for curto demais para a imagem carregar, completamos.
+      let esperou = 0;
       if (humanize) {
         await setPresence(groupId, 'typing');
-        await sleep(typingMs(job.text));
+        const t = typingMs(job.text);
+        await sleep(t);
+        esperou = t;
         await setPresence(groupId, 'stop');
       }
-      const jpegThumbnail = await miniaturaDoLink(job.text);
-      await client.sendMessage(groupId, job.text,
-        jpegThumbnail ? { ...options, extraOptions: { jpegThumbnail } } : options);
+      // Só o primeiro envio deste link paga a espera cheia.
+      const precisaEsperar = link && !jaAquecido(link);
+      if (precisaEsperar && esperou < ESPERA_PREVIA_MS) await sleep(ESPERA_PREVIA_MS - esperou);
+
+      // 3) Confere se a imagem já chegou. Se o próprio WhatsApp tem a imagem,
+      //    deixamos a prévia dele; se não, anexamos a miniatura da og:image.
+      let extras = null;
+      if (link) {
+        const depois = await consultarPrevia(job.text);
+        console.log('[Prévia de link]', JSON.stringify({ antes, depois }));
+        if (!depois || !depois.temImagem) {
+          const jpegThumbnail = await miniaturaDoLink(job.text);
+          if (jpegThumbnail) extras = { extraOptions: { jpegThumbnail } };
+        }
+      }
+
+      await client.sendMessage(groupId, job.text, extras ? { ...options, ...extras } : options);
       break;
     }
 
