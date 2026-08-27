@@ -76,6 +76,39 @@ async function getMentionsForAll(groupId) {
   }
 }
 
+// Diagnóstico da prévia de link (aquele cartão com imagem/título).
+// A lib já pede prévia por padrão, chamando a API interna do WhatsApp Web —
+// e a própria doc dela avisa que isso "não tem efeito em contas
+// multi-dispositivo". Como o link está indo seco, este teste mostra no log o
+// que a API responde de fato neste ambiente. É só observação: roda em
+// try/catch e nunca altera nem bloqueia o envio.
+async function diagnosticarPreviaDeLink(texto) {
+  if (!texto || !/https?:\/\//i.test(texto)) return;
+  try {
+    const r = await client.pupPage.evaluate(async (t) => {
+      let link = null;
+      try {
+        const { findLink } = window.require('WALinkify');
+        link = findLink(t);
+      } catch (e) { return { etapa: 'WALinkify', erro: String(e && e.message || e) }; }
+      if (!link) return { etapa: 'findLink', resultado: 'nenhum link reconhecido' };
+      try {
+        const p = await window.require('WAWebLinkPreviewChatAction').getLinkPreview(link);
+        return {
+          etapa: 'getLinkPreview',
+          link: String(link.href || link),
+          respostaVazia: !p,
+          temData: !!(p && p.data),
+          campos: p && p.data ? Object.keys(p.data).slice(0, 12) : (p ? Object.keys(p).slice(0, 12) : null)
+        };
+      } catch (e) { return { etapa: 'getLinkPreview', erro: String(e && e.message || e) }; }
+    }, texto);
+    console.log('[Prévia de link]', JSON.stringify(r));
+  } catch (e) {
+    console.log('[Prévia de link] diagnóstico falhou:', e.message);
+  }
+}
+
 async function buildSendOptions(job, groupId) {
   const options = { waitUntilMsgSent: true };
 
@@ -106,6 +139,7 @@ async function sendToGroup(job, groupId) {
         await sleep(typingMs(job.text));
         await setPresence(groupId, 'stop');
       }
+      await diagnosticarPreviaDeLink(job.text);
       await client.sendMessage(groupId, job.text, options);
       break;
     }
