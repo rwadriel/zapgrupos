@@ -76,166 +76,6 @@ async function getMentionsForAll(groupId) {
   }
 }
 
-// ===== Prévia de link com imagem =====
-// A prévia da lib já traz título/descrição (vem do getLinkPreview do WhatsApp
-// Web), mas SEM a imagem — por isso o cartão ia "pela metade". O WhatsApp
-// exige a miniatura embutida no campo jpegThumbnail; o cliente oficial baixa
-// a imagem e anexa, passo que a lib não faz. Aqui buscamos a og:image do site
-// e geramos essa miniatura.
-//
-// Vai em options.extraOptions porque a lib espalha extraOptions POR ÚLTIMO ao
-// montar a mensagem — assim a miniatura não é sobrescrita pela prévia dela.
-// Tudo best-effort: qualquer falha volta ao comportamento atual (cartão sem
-// imagem), nunca impede o envio.
-const UA_NAVEGADOR = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
-const PREVIA_LARGURA_MAX = 640;
-
-function primeiroLink(texto) {
-  const m = String(texto || '').match(/https?:\/\/[^\s<>"']+/i);
-  return m ? m[0].replace(/[.,;:!?)\]]+$/, '') : null;
-}
-
-function extrairOgImage(html, baseUrl) {
-  // procura og:image e, como reserva, twitter:image (com atributos em qualquer ordem)
-  const padroes = [
-    /<meta[^>]+(?:property|name)=["']og:image(?::secure_url|:url)?["'][^>]*>/gi,
-    /<meta[^>]+(?:property|name)=["']twitter:image(?::src)?["'][^>]*>/gi
-  ];
-  for (const re of padroes) {
-    const tags = html.match(re);
-    if (!tags) continue;
-    for (const tag of tags) {
-      const c = tag.match(/content=["']([^"']+)["']/i);
-      if (c && c[1]) {
-        try { return new URL(c[1], baseUrl).href; } catch { /* url inválida */ }
-      }
-    }
-  }
-  return null;
-}
-
-async function buscarUrlDaImagem(link) {
-  const res = await fetch(link, {
-    headers: { 'User-Agent': UA_NAVEGADOR, Accept: 'text/html,application/xhtml+xml' },
-    redirect: 'follow',
-    signal: AbortSignal.timeout(8000)
-  });
-  if (!res.ok) return null;
-  if (!/text\/html/i.test(res.headers.get('content-type') || '')) return null;
-  const html = (await res.text()).slice(0, 400000); // og:* fica no <head>
-  return extrairOgImage(html, res.url || link);
-}
-
-async function baixarImagemComoDataUrl(urlImagem) {
-  const res = await fetch(urlImagem, {
-    headers: { 'User-Agent': UA_NAVEGADOR, Accept: 'image/*' },
-    redirect: 'follow',
-    signal: AbortSignal.timeout(8000)
-  });
-  if (!res.ok) return null;
-  const tipo = res.headers.get('content-type') || 'image/jpeg';
-  if (!/^image\//i.test(tipo)) return null;
-  const buf = Buffer.from(await res.arrayBuffer());
-  if (!buf.length || buf.length > 8 * 1024 * 1024) return null;
-  return `data:${tipo};base64,${buf.toString('base64')}`;
-}
-
-// Redimensiona e converte para JPEG usando o canvas da própria página (evita
-// depender de biblioteca nativa de imagem no servidor).
-async function gerarMiniatura(dataUrl) {
-  return await client.pupPage.evaluate(async (src, maxW) => {
-    const img = new Image();
-    await new Promise((ok, falha) => {
-      img.onload = ok;
-      img.onerror = () => falha(new Error('imagem não decodificou'));
-      img.src = src;
-    });
-    const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
-    if (!w || !h) throw new Error('imagem sem dimensões');
-    const escala = Math.min(1, maxW / w);
-    const c = document.createElement('canvas');
-    c.width = Math.max(1, Math.round(w * escala));
-    c.height = Math.max(1, Math.round(h * escala));
-    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-    return c.toDataURL('image/jpeg', 0.72).split(',')[1];
-  }, dataUrl, PREVIA_LARGURA_MAX);
-}
-
-// Quanto esperar a prévia carregar antes de enviar — o mesmo que uma pessoa
-// faz: cola o link, vê o cartão montar e só então aperta enviar. O WhatsApp
-// devolve título/descrição na hora, mas a IMAGEM chega depois; enviar no
-// mesmo instante manda o cartão sem foto.
-const ESPERA_PREVIA_MS = Math.max(0, Number(process.env.ZG_ESPERA_PREVIA_SEGUNDOS) || 12) * 1000;
-
-// A prévia fica em cache na página do WhatsApp. Numa mensagem para vários
-// grupos, só o primeiro precisa esperar a imagem carregar; os seguintes já
-// pegam pronto. Sem isto, cada grupo somaria +12s à fila à toa.
-const linksAquecidos = new Map();
-const VALIDADE_AQUECIMENTO_MS = 5 * 60000;
-
-function jaAquecido(link) {
-  const t = linksAquecidos.get(link);
-  if (t && Date.now() - t < VALIDADE_AQUECIMENTO_MS) return true;
-  linksAquecidos.set(link, Date.now());
-  // limpeza simples para o mapa não crescer sem limite
-  if (linksAquecidos.size > 200) {
-    for (const [k, v] of linksAquecidos) if (Date.now() - v > VALIDADE_AQUECIMENTO_MS) linksAquecidos.delete(k);
-  }
-  return false;
-}
-
-// Pede a prévia ao WhatsApp Web (aquece o cache dele, como colar no campo de
-// digitação) e conta o que veio. Só observa — nunca interrompe o envio.
-async function consultarPrevia(texto) {
-  try {
-    return await client.pupPage.evaluate(async (t) => {
-      let link = null;
-      try {
-        const { findLink } = window.require('WALinkify');
-        link = findLink(t);
-      } catch (e) { return { erro: 'WALinkify: ' + (e && e.message) }; }
-      if (!link) return { semLink: true };
-      try {
-        const p = await window.require('WAWebLinkPreviewChatAction').getLinkPreview(link);
-        const d = (p && p.data) || p || null;
-        const campos = d ? Object.keys(d) : [];
-        return {
-          campos,
-          // algum campo de imagem? (thumbnail, jpegThumbnail, imageUrl...)
-          temImagem: campos.some(k => /thumb|image/i.test(k) && d[k]),
-          vazio: !d
-        };
-      } catch (e) { return { erro: 'getLinkPreview: ' + (e && e.message) }; }
-    }, texto);
-  } catch (e) {
-    return { erro: e.message };
-  }
-}
-
-async function miniaturaDoLink(texto) {
-  const link = primeiroLink(texto);
-  if (!link) return null;
-  try {
-    const urlImagem = await buscarUrlDaImagem(link);
-    if (!urlImagem) {
-      console.log('[Prévia de link] sem og:image em', link);
-      return null;
-    }
-    const dataUrl = await baixarImagemComoDataUrl(urlImagem);
-    if (!dataUrl) {
-      console.log('[Prévia de link] não baixou a imagem:', urlImagem);
-      return null;
-    }
-    const jpeg = await gerarMiniatura(dataUrl);
-    if (!jpeg) return null;
-    console.log(`[Prévia de link] miniatura pronta para ${link} (${Math.round(jpeg.length / 1024)}KB)`);
-    return jpeg;
-  } catch (e) {
-    console.log('[Prévia de link] falhou (envia sem imagem):', e.message);
-    return null;
-  }
-}
-
 async function buildSendOptions(job, groupId) {
   const options = { waitUntilMsgSent: true };
 
@@ -261,39 +101,18 @@ async function sendToGroup(job, groupId) {
 
   switch (job.type) {
     case 'texto': {
-      const link = primeiroLink(job.text);
-
-      // 1) Dispara a busca da prévia ANTES da espera — é o equivalente a colar
-      //    o link no campo de digitação e deixar o WhatsApp trabalhar.
-      const antes = link ? await consultarPrevia(job.text) : null;
-
-      // 2) Espera. Com "simular envio" ligado, o tempo de "digitando..." já
-      //    serve; se for curto demais para a imagem carregar, completamos.
-      let esperou = 0;
+      // Nota: NÃO adianta esperar pela prévia do link aqui. Medido em produção:
+      // o getLinkPreview responde na hora com isLoading=false e sem nenhum
+      // campo de imagem (thumbnail/thumbnailDirectPath), e continua assim
+      // depois de 25s. A imagem das prévias completas vem de outro caminho —
+      // o compositor sobe a miniatura para os servidores do WhatsApp e a
+      // referencia por thumbnailDirectPath/Sha256. Esperar só atrasava o envio.
       if (humanize) {
         await setPresence(groupId, 'typing');
-        const t = typingMs(job.text);
-        await sleep(t);
-        esperou = t;
+        await sleep(typingMs(job.text));
         await setPresence(groupId, 'stop');
       }
-      // Só o primeiro envio deste link paga a espera cheia.
-      const precisaEsperar = link && !jaAquecido(link);
-      if (precisaEsperar && esperou < ESPERA_PREVIA_MS) await sleep(ESPERA_PREVIA_MS - esperou);
-
-      // 3) Confere se a imagem já chegou. Se o próprio WhatsApp tem a imagem,
-      //    deixamos a prévia dele; se não, anexamos a miniatura da og:image.
-      let extras = null;
-      if (link) {
-        const depois = await consultarPrevia(job.text);
-        console.log('[Prévia de link]', JSON.stringify({ antes, depois }));
-        if (!depois || !depois.temImagem) {
-          const jpegThumbnail = await miniaturaDoLink(job.text);
-          if (jpegThumbnail) extras = { extraOptions: { jpegThumbnail } };
-        }
-      }
-
-      await client.sendMessage(groupId, job.text, extras ? { ...options, ...extras } : options);
+      await client.sendMessage(groupId, job.text, options);
       break;
     }
 

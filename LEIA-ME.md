@@ -41,7 +41,6 @@ ZG_HEARTBEAT_NTFY_TOPIC=seu-topico-ntfy-secreto
 - `ZG_HEARTBEAT_NTFY_TOPIC` — opcional: ativa os avisos no celular (veja a seção "Sinal no celular").
 - `PORT` — opcional, padrão `3900`.
 - `ZG_TIMEOUT_ENVIO_MINUTOS` — opcional, padrão `4`: tempo máximo para enviar a **um** grupo. Se o WhatsApp Web travar, aquele envio falha (com alerta no ntfy) e a fila continua, em vez de ficar presa.
-- `ZG_ESPERA_PREVIA_SEGUNDOS` — opcional, padrão `12`: quando a mensagem tem link, o sistema pede a prévia e **espera** esse tempo antes de enviar, para o cartão carregar com imagem (é o que uma pessoa faz ao colar o link e aguardar). Com "simular envio" ligado, o tempo de "digitando…" já conta. Só o primeiro grupo espera; os seguintes reaproveitam a prévia.
 - `ZG_MANTER_NOTIFICACOES` — opcional, padrão ligado: marca a sessão web como "ausente" para que o **celular continue notificando** as mensagens novas (com a sessão sempre online, o WhatsApp para de avisar no telefone). Use `0` para desligar.
 - `ZG_MAX_ATRASO_MINUTOS` — opcional, padrão `60`: se o servidor/WhatsApp ficar fora do ar e uma mensagem agendada atrasar mais do que isso, ela **não** é disparada ao religar — vira "Expirada" na fila (com botão de reenviar) e um alerta é enviado via ntfy. Mensagens recorrentes pulam para a próxima ocorrência (também com aviso no ntfy).
 
