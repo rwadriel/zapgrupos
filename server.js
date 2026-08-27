@@ -444,6 +444,16 @@ app.post('/api/campaigns/:id/launch', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Diagnóstico da prévia de link — abra no navegador logado:
+//   /api/diagnostico-previa?url=https://seusite.com
+app.get('/api/diagnostico-previa', async (req, res) => {
+  try {
+    if (wa.state.status !== 'conectado') return res.status(400).json({ error: 'WhatsApp não está conectado.' });
+    const url = String(req.query.url || 'https://musicalucrativa.com.br/');
+    res.json({ url, ...(await wa.inspecionarPrevia(url)) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ===== Diagnóstico de persistência =====
 // Uma pasta montada como volume Docker fica em outro dispositivo de bloco que
 // o sistema de arquivos do container. Comparar st_dev diz, sem adivinhação, se

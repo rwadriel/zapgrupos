@@ -393,6 +393,55 @@ async function logout() {
   }, 3000);
 }
 
+// Diagnóstico da prévia de link: compara o que a API do WhatsApp devolve com
+// os campos de uma mensagem REAL que já tem prévia funcionando (uma enviada
+// pelo celular, por exemplo). Assim descobrimos o nome e o formato exatos do
+// campo da imagem, em vez de adivinhar. Só lê estrutura (nomes/tipos/tamanhos),
+// não o conteúdo das conversas.
+async function inspecionarPrevia(url) {
+  return await client.pupPage.evaluate(async (u) => {
+    const out = { api: null, exemplos: [], totalMensagens: 0 };
+
+    // 1) o que a API devolve para esta URL
+    try {
+      const { findLink } = window.require('WALinkify');
+      const link = findLink(u);
+      const p = link ? await window.require('WAWebLinkPreviewChatAction').getLinkPreview(link) : null;
+      const d = (p && p.data) || p || null;
+      out.api = d
+        ? Object.keys(d).map(k => {
+            const v = d[k];
+            const tipo = v === null ? 'null' : (v && v.byteLength !== undefined ? 'binario' : Array.isArray(v) ? 'array' : typeof v);
+            const tam = typeof v === 'string' ? v.length : (v && v.byteLength) || (Array.isArray(v) ? v.length : undefined);
+            return tam !== undefined ? `${k}:${tipo}(${tam})` : `${k}:${tipo}`;
+          })
+        : 'sem dados';
+    } catch (e) { out.api = 'erro: ' + (e && e.message); }
+
+    // 2) mensagens já existentes que TÊM prévia funcionando
+    try {
+      const msgs = window.require('WAWebCollections').Msg.getModelsArray();
+      out.totalMensagens = msgs.length;
+      const comPrevia = msgs.filter(m => m && (m.subtype === 'url' || m.matchedText || m.canonicalUrl));
+      for (const m of comPrevia.slice(-3)) {
+        const campos = Object.keys(m).concat(Object.keys(m.__x_data || {}));
+        const relevantes = [...new Set(campos)].filter(k => /thumb|image|preview|title|description|canonical|matched|subtype|url/i.test(k));
+        out.exemplos.push({
+          deQuem: m.id && m.id.fromMe ? 'enviada por mim' : 'recebida',
+          campos: relevantes.map(k => {
+            const v = m[k];
+            const tipo = v === null || v === undefined ? 'vazio' : (v && v.byteLength !== undefined ? 'binario' : typeof v);
+            const tam = typeof v === 'string' ? v.length : (v && v.byteLength) || undefined;
+            return tam !== undefined ? `${k}:${tipo}(${tam})` : `${k}:${tipo}`;
+          })
+        });
+      }
+    } catch (e) { out.exemplos = 'erro: ' + (e && e.message); }
+
+    return out;
+  }, url);
+}
+
 // Reset completo: apaga a sessão salva e força um QR novo. Útil quando a
 // sessão está morta/travada (aparelho removido no celular, "browser already
 // running", etc.) e o logout normal não resolve — não depende do WhatsApp Web
@@ -431,5 +480,6 @@ module.exports = {
   initialize,
   listGroups,
   logout,
-  resetSession
+  resetSession,
+  inspecionarPrevia
 };
