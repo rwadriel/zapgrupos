@@ -165,6 +165,11 @@
   .stat .val{font-family:'Space Grotesk';font-size:30px;font-weight:700;letter-spacing:-.02em;margin-top:2px}
   .stat .trend{font-size:12px;color:var(--muted);margin-top:2px}
   .stat.hero{background:linear-gradient(140deg,#2a3618,var(--card) 70%);border-color:#3c4c20}
+  .mid-prev{margin-top:10px}
+  .mid-prev img,.mid-prev video{max-width:100%;max-height:170px;border-radius:10px;border:1px solid var(--line);background:#000;display:block}
+  .mid-prev img{cursor:zoom-in;object-fit:contain}
+  .mid-prev audio{width:100%;max-width:420px;margin-top:4px}
+  .mid-acoes{margin-left:auto;display:flex;align-items:center;gap:4px}
   .stats-grid.tres{grid-template-columns:repeat(3,1fr)}
   @media(max-width:760px){.stats-grid.tres{grid-template-columns:1fr}}
   .stat.hero .val{color:var(--lime)}
@@ -423,6 +428,23 @@ function renderConn(s){
   p.appendChild(rb);}
 
 // ===== BIBLIOTECA DE MÍDIA =====
+function tipoMidia(nome){
+  const e=(nome.split('.').pop()||'').toLowerCase();
+  if(['jpg','jpeg','png','gif','webp','bmp','avif'].includes(e))return 'imagem';
+  if(['mp4','webm','mov','m4v','ogv'].includes(e))return 'video';
+  if(['mp3','ogg','opus','m4a','aac','wav','amr'].includes(e))return 'audio';
+  return 'arquivo';
+}
+// Prévia embutida: ajuda a identificar o arquivo sem precisar baixar.
+// preload="metadata"/"none" evita puxar vídeo/áudio inteiro ao abrir a aba.
+function previaMidia(nome){
+  const url=`/api/media/${encodeURIComponent(nome)}/arquivo`;
+  const t=tipoMidia(nome);
+  if(t==='imagem')return `<div class="mid-prev"><img src="${url}" loading="lazy" alt="" onclick="window.open('${url}','_blank')" onerror="this.closest('.mid-prev').remove()"></div>`;
+  if(t==='video')return `<div class="mid-prev"><video src="${url}" controls preload="metadata" playsinline onerror="this.closest('.mid-prev').remove()"></video></div>`;
+  if(t==='audio')return `<div class="mid-prev"><audio src="${url}" controls preload="none" onerror="this.closest('.mid-prev').remove()"></audio></div>`;
+  return '';
+}
 function fmtBytes(b){if(b<1024)return b+' B';if(b<1048576)return (b/1024).toFixed(0)+' KB';return (b/1048576).toFixed(1)+' MB'}
 
 async function loadMedia(){
@@ -467,9 +489,13 @@ async function loadMedia(){
             <span class="step-type-badge">${esc((a.nome.split('.').pop()||'?').toUpperCase())}</span>
             <span class="step-when">${esc(a.nomeOriginal||a.nome)}</span>
             ${a.protegido?'<span class="flag" style="color:var(--amber);border-color:var(--amber)">em uso</span>':''}
-            <span class="step-rm" data-del-media="${esc(a.nome)}" title="Apagar">×</span>
+            <span class="mid-acoes">
+              <a class="btn btn-ghost btn-sm" href="/api/media/${encodeURIComponent(a.nome)}/arquivo?download=1" download title="Baixar">⬇ Baixar</a>
+              <span class="step-rm" data-del-media="${esc(a.nome)}" title="Apagar">×</span>
+            </span>
           </div>
           <div class="step-content" style="color:var(--muted);font-size:12.5px">${fmtBytes(a.tamanho)} · ${dt}</div>
+          ${previaMidia(a.nome)}
           <div class="job-flags" style="margin-top:6px">${usoTxt}</div></div>`;
       });
       html+=`</div>`;

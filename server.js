@@ -501,6 +501,23 @@ app.get('/api/media', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Serve o arquivo em si: prévia embutida no painel (?download ausente) ou
+// download com o nome original (?download=1). O res.sendFile do Express já
+// responde a Range requests, então vídeo e áudio podem ser buscados/pulados.
+app.get('/api/media/:nome/arquivo', (req, res) => {
+  const full = caminhoSeguroMedia(req.params.nome);
+  if (!full) return res.status(400).json({ error: 'Nome de arquivo inválido.' });
+  if (!fs.existsSync(full)) return res.status(404).json({ error: 'Arquivo não encontrado.' });
+
+  if (req.query.download === '1') {
+    // Nome amigável: o original informado no upload, se conhecido.
+    const usos = store.usosDeArquivos().get(full) || [];
+    const original = (usos.find(u => u.fileName) || {}).fileName;
+    return res.download(full, original || path.basename(full));
+  }
+  res.sendFile(full);
+});
+
 app.delete('/api/media/:nome', (req, res) => {
   const full = caminhoSeguroMedia(req.params.nome);
   if (!full) return res.status(400).json({ error: 'Nome de arquivo inválido.' });
