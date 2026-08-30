@@ -585,6 +585,33 @@ app.post('/api/sinal/test', async (req, res) => {
   }
 });
 
+// ===== Encerramento limpo =====
+// A sessão do WhatsApp mora no perfil do Chrome (.wwebjs_auth). Sem isto, um
+// deploy/restart mandava SIGTERM, o Node morria na hora e o Chrome era morto
+// no meio de uma escrita — o que, repetido, corrompe o perfil e faz a sessão
+// se perder (volta a pedir QR). Aqui fechamos o navegador com calma antes de
+// sair, para o perfil ser gravado por inteiro.
+let encerrando = false;
+async function encerrarComCalma(sinal) {
+  if (encerrando) return;
+  encerrando = true;
+  console.log(`[App] ${sinal} recebido — fechando o Chrome para preservar a sessão...`);
+  const prazo = setTimeout(() => {
+    console.log('[App] Demorou demais; saindo assim mesmo.');
+    process.exit(0);
+  }, 8000); // o Docker manda SIGKILL ~10s depois do SIGTERM
+  try {
+    await wa.client.destroy();
+    console.log('[App] Chrome encerrado com segurança.');
+  } catch (e) {
+    console.log('[App] Falha ao encerrar o Chrome:', e.message);
+  }
+  clearTimeout(prazo);
+  process.exit(0);
+}
+process.on('SIGTERM', () => encerrarComCalma('SIGTERM'));
+process.on('SIGINT', () => encerrarComCalma('SIGINT'));
+
 // ===== Boot =====
 app.listen(PORT, '0.0.0.0', () => {
   console.log('');
