@@ -269,6 +269,8 @@ app.get('/api/campaigns', (req, res) => {
       if (!arqs.length) continue;
       s.filesStatus = arqs.map(f => ({
         fileName: f.fileName || 'arquivo',
+        // nome interno: o painel usa para montar a prévia via /api/media/:nome/arquivo
+        nome: f.filePath ? path.basename(f.filePath) : null,
         exists: !!f.filePath && fs.existsSync(f.filePath)
       }));
       s.fileMissing = s.filesStatus.some(f => !f.exists);

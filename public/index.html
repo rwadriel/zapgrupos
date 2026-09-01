@@ -598,6 +598,10 @@ function renderStepCard(s,num,campId,isLaunch){
     arqBox=faltando.length
       ?`<div style="margin-top:8px;background:var(--red-soft);color:var(--red);border-radius:9px;padding:7px 10px;font-size:12.5px"><b>⚠️ Arquivo ausente no servidor:</b> ${faltando.map(f=>esc(f.fileName)).join(', ')} — edite a etapa e envie novamente.</div>`
       :`<div style="margin-top:8px;color:var(--green-deep);font-size:12.5px">✓ arquivo${s.filesStatus.length>1?'s':''} ok no servidor</div>`;
+    // Prévia da mídia na própria etapa: dá para conferir o que será enviado
+    // sem abrir a Biblioteca nem baixar o arquivo.
+    const prevs=s.filesStatus.filter(f=>f.exists&&f.nome).map(f=>previaMidia(f.nome)).join('');
+    if(prevs)arqBox=`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;margin-top:8px">${prevs}</div>`+arqBox;
   }
   return `<div class="step-card"><div class="step-head"><span class="step-num">${num}</span><span class="step-when">Dia ${s.dayOffset+1}, ${s.time}</span><span class="step-type-badge">${TYPE_ICONS[s.type]||''} ${TYPE_LABELS[s.type]||s.type}</span>${isLaunch?`<span class="step-rm" data-launch-del="${s.id}">×</span>`:`<span class="step-rm" data-delstep="${s.id}">×</span>`}</div>${body}<div class="job-flags" style="margin-top:6px">${flags.map(f=>`<span class="flag">${f}</span>`).join('')}</div>${arqBox}${isLaunch?`<button class="btn btn-ghost btn-sm" data-launch-edit="${s.id}" style="margin-top:8px">Editar conteúdo</button>`:`<button class="btn btn-ghost btn-sm" data-editstep="${s.id}" style="margin-top:8px">Editar</button>`}</div>`;
 }
