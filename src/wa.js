@@ -69,6 +69,14 @@ const client = new Client({
   // falhava no meio e deixava um Chrome órfão — que depois travava tudo com
   // "browser is already running". 2min dá folga para o pareamento concluir.
   authTimeoutMs: 120000,
+  // ESTE número é usado por mais de um app. Por padrão, quando outra sessão
+  // web fica "ativa", o whatsapp-web.js DESISTE e cai (o WhatsApp chega a
+  // desvincular esta sessão → pede QR de novo). Com takeoverOnConflict, em
+  // vez de ceder, esta sessão REASSUME e segura a conexão — que é o que faz o
+  // zapgrupos parar de cair mesmo dividindo o número. takeoverTimeoutMs 0 =
+  // reassume na hora. (Configurável por ZG_TAKEOVER=0 para voltar ao padrão.)
+  takeoverOnConflict: process.env.ZG_TAKEOVER !== '0',
+  takeoverTimeoutMs: 0,
   puppeteer: {
     headless: true,
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable',
