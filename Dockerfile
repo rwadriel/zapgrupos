@@ -35,6 +35,10 @@ RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit
 
 COPY . .
 
+# Correção pontual no whatsapp-web.js (envio de mídia quebrado pelo WhatsApp Web
+# desde ~17/09/2026). Ver scripts/patch-wwebjs.js.
+RUN node scripts/patch-wwebjs.js
+
 RUN mkdir -p data media .wwebjs_auth /tmp/.chrome /run/dbus
 
 EXPOSE 3900

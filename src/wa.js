@@ -50,6 +50,13 @@ function limparLocksDoChrome() {
 
 console.log('[WA] VERSAO DEFINITIVA: Google Chrome Stable, sem userDataDir, sem single-process, sem crashpad');
 
+// Confirma no log se a correção de envio de mídia (scripts/patch-wwebjs.js)
+// entrou no build — se aparecer AUSENTE, mídia volta a falhar.
+try {
+  const utils = fs.readFileSync(require.resolve('whatsapp-web.js/src/util/Injected/Utils.js'), 'utf8');
+  console.log('[WA] Correção de envio de mídia (__x_id):', utils.includes('ZG-PATCH midia __x_id') ? 'ATIVA' : 'AUSENTE — envios com mídia podem falhar');
+} catch (e) { console.log('[WA] Não consegui verificar a correção de mídia:', e.message); }
+
 const state = {
   status: 'iniciando',
   qrDataUrl: null,
