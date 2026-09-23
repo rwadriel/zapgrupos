@@ -88,7 +88,11 @@ const client = new Client({
     headless: true,
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable',
     timeout: 90000,
-    protocolTimeout: 90000,
+    // Teto de cada chamada ao navegador. Com 90s, enviar um vídeo grande
+    // falhava no meio ("Runtime.callFunctionOn timed out"): preparar e subir
+    // 23MB leva mais que isso. O preparo+upload acontece numa única chamada,
+    // então o teto precisa cobrir o arquivo inteiro.
+    protocolTimeout: Math.max(1, Number(process.env.ZG_PROTOCOL_TIMEOUT_MINUTOS) || 10) * 60000,
     // false = não despeja o stderr do Chrome no log (ALSA, GCM DEPRECATED_ENDPOINT,
     // machine-id etc. são ruído de container sem áudio/dbus, não são erros reais).
     // Volte para true se precisar depurar o Chrome em si.

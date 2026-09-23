@@ -170,7 +170,13 @@ async function runJob(job, onProgress) {
   const results = [];
   // Mensagens com vários arquivos demoram mais: o teto cresce junto.
   const nFiles = (job.files && job.files.length) || 1;
-  const timeoutMs = TIMEOUT_ENVIO_MS * nFiles;
+  // Arquivo grande demora mais para subir: soma 1min a cada 5MB, para um
+  // vídeo pesado não ser abortado no meio do upload. Teto de 20min por grupo.
+  const arqs = (job.files && job.files.length) ? job.files : (job.filePath ? [{ filePath: job.filePath }] : []);
+  let bytes = 0;
+  for (const f of arqs) { try { bytes += fs.statSync(f.filePath).size; } catch {} }
+  const extraPorTamanho = Math.ceil(bytes / (5 * 1024 * 1024)) * 60000;
+  const timeoutMs = Math.min(TIMEOUT_ENVIO_MS * nFiles + extraPorTamanho, 20 * 60000);
   for (let i = 0; i < job.groupIds.length; i++) {
     const groupId = job.groupIds[i];
     try {
