@@ -67,9 +67,11 @@ async function getMentionsForAll(groupId) {
       const parts = chat && chat.groupMetadata && chat.groupMetadata.participants;
       const arr = parts && (parts.getModelsArray ? parts.getModelsArray() : (Array.isArray(parts) ? parts : null));
       if (!arr) return [];
-      return arr.map(p => (p && p.id && p.id._serialized) || null).filter(Boolean);
+      // id._serialized está virando id.$1 no WhatsApp Web; aceita os dois,
+      // senão "mencionar todos" para de mencionar sem avisar.
+      return arr.map(p => (p && p.id && (p.id._serialized || p.id.$1)) || null).filter(Boolean);
     }, groupId);
-    const myId = client.info?.wid?._serialized;
+    const myId = client.info?.wid?._serialized || client.info?.wid?.$1;
     return [...new Set(ids.filter(id => (id.endsWith('@c.us') || id.endsWith('@lid')) && id !== myId))];
   } catch (e) {
     return [];

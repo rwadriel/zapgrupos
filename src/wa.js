@@ -290,7 +290,10 @@ async function listGroupsResiliente() {
 
     for (const chat of chats) {
       try {
-        const id = chat && chat.id && chat.id._serialized;
+        // O WhatsApp renomeou id._serialized para id.$1 (está migrando aos
+        // poucos). Sem este fallback, a lista de grupos volta VAZIA quando a
+        // mudança chegar nesta conta. Mesmo remédio do upstream (commit 58ddf15).
+        const id = chat && chat.id && (chat.id._serialized || chat.id.$1);
         if (!id || id.slice(-5) !== '@g.us') continue;
 
         let name = '(grupo sem nome)';
@@ -368,12 +371,12 @@ async function listGroups() {
     ultimosGrupos = chats
     .filter(c => c.isGroup)
     .map(c => ({
-      id: c.id._serialized,
+      id: c.id._serialized || c.id.$1,
       name: c.name || '(grupo sem nome)',
       participants: c.participants ? c.participants.length : null,
       isAdmin: c.participants
         ? c.participants.some(p =>
-            p.id._serialized === client.info.wid._serialized &&
+            (p.id._serialized || p.id.$1) === (client.info.wid._serialized || client.info.wid.$1) &&
             (p.isAdmin || p.isSuperAdmin)
           )
         : false
