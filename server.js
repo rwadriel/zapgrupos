@@ -456,6 +456,18 @@ app.get('/api/diagnostico-previa', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Histórico de conexão (quedas, reconexões, QR) gravado em disco.
+app.get('/api/eventos', (req, res) => {
+  try {
+    const n = Math.min(Math.max(parseInt(req.query.n, 10) || 60, 1), 500);
+    let linhas = [];
+    try {
+      linhas = fs.readFileSync(wa.LOG_CONEXAO, 'utf8').trim().split('\n').filter(Boolean).slice(-n);
+    } catch { /* ainda não há histórico */ }
+    res.json({ total: linhas.length, eventos: linhas.map(l => { try { return JSON.parse(l); } catch { return { bruto: l }; } }) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ===== Diagnóstico de persistência =====
 // Uma pasta montada como volume Docker fica em outro dispositivo de bloco que
 // o sistema de arquivos do container. Comparar st_dev diz, sem adivinhação, se

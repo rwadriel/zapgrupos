@@ -5,6 +5,35 @@ const fs = require('fs');
 const { execFileSync } = require('child_process');
 
 const SESSION_DIR = path.join(__dirname, '..', '.wwebjs_auth');
+const DATA_DIR = path.join(__dirname, '..', 'data');
+const LOG_CONEXAO = path.join(DATA_DIR, 'conexao.log');
+
+// Histórico de conexão em arquivo. O log do EasyPanel só guarda as linhas
+// recentes, então toda queda virava "não sei dizer o motivo". Aqui fica
+// registrado em disco (no volume), para consulta depois pelo /api/eventos.
+function registrarEvento(tipo, detalhe) {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    const linha = JSON.stringify({ em: new Date().toISOString(), tipo, detalhe: detalhe || null }) + '\n';
+    // Mantém o arquivo pequeno: acima de ~256KB, guarda só o fim.
+    try {
+      if (fs.statSync(LOG_CONEXAO).size > 256 * 1024) {
+        const atual = fs.readFileSync(LOG_CONEXAO, 'utf8').split('\n').slice(-300).join('\n');
+        fs.writeFileSync(LOG_CONEXAO, atual);
+      }
+    } catch {}
+    fs.appendFileSync(LOG_CONEXAO, linha);
+  } catch (e) { /* registro nunca pode atrapalhar o envio */ }
+}
+
+// Quantos envios estão em andamento. Sem isto, uma reconexão podia matar o
+// Chrome no meio de um upload — o que aparece como "Target closed" e faz a
+// mensagem falhar sem motivo aparente.
+let enviosEmAndamento = 0;
+function marcarEnvio(delta) {
+  enviosEmAndamento = Math.max(0, enviosEmAndamento + delta);
+}
+const dormir = (ms) => new Promise(r => setTimeout(r, ms));
 
 // Mata Chrome órfão antes de subir outro. Quando o initialize() falha no meio
 // (ex.: timeout de pareamento), o processo do Chrome CONTINUA vivo, mas o
@@ -17,6 +46,7 @@ function matarChromeOrfaos() {
   try {
     execFileSync('pkill', ['-f', 'google-chrome-stable'], { stdio: 'ignore' });
     console.log('[WA] Chrome(s) órfão(s) encerrado(s).');
+    registrarEvento('chrome_orfao_encerrado', null);
   } catch (e) {
     // pkill sai com 1 quando não achou processo — situação normal.
   }
@@ -130,6 +160,7 @@ client.on('qr', async (qr) => {
   state.status = 'aguardando_qr';
   state.qrDataUrl = await QRCode.toDataURL(qr, { margin: 1, width: 320 });
   state.lastError = null;
+  if (!state.qrJaAvisado) { state.qrJaAvisado = true; registrarEvento('pedindo_qr', null); }
   console.log('[WA] QR code gerado — escaneie na aba Conexão.');
 });
 
@@ -171,6 +202,7 @@ client.on('ready', () => {
   state.qrDataUrl = null;
   state.lastError = null;
   state.aviso = null;
+  state.qrJaAvisado = false;
   retryDelayMs = RETRY_MIN_MS; // conectou: zera o backoff
 
   state.me = {
@@ -180,6 +212,7 @@ client.on('ready', () => {
 
   manterNotificacoesNoCelular();
 
+  registrarEvento('conectado', `${state.me.name} (${state.me.number})`);
   console.log(`[WA] Conectado como ${state.me.name} (${state.me.number}).`);
   console.log('[WA] Sincronizando conversas... aguarde alguns segundos e clique em "recarregar".');
 });
@@ -189,6 +222,7 @@ client.on('disconnected', (reason) => {
   state.me = null;
   state.qrDataUrl = null;
   state.lastError = String(reason);
+  registrarEvento('desconectado', String(reason));
   console.log('[WA] Desconectado:', reason);
 
   setTimeout(() => {
@@ -201,6 +235,7 @@ client.on('auth_failure', (msg) => {
   state.qrDataUrl = null;
   state.me = null;
   state.lastError = 'Falha de autenticação: ' + msg;
+  registrarEvento('falha_autenticacao', String(msg));
   console.error('[WA] Falha de autenticação:', msg);
 });
 
@@ -233,6 +268,15 @@ async function reiniciarConexao() {
   conectando = true;
   clearTimeout(retryTimer);
   try {
+    // Não derruba o navegador no meio de um envio: espera até 90s ele
+    // terminar (ou estourar o próprio teto) antes de reiniciar.
+    if (enviosEmAndamento > 0) {
+      console.log(`[WA] ${enviosEmAndamento} envio(s) em andamento — aguardando antes de reiniciar.`);
+      registrarEvento('reconexao_adiada', `${enviosEmAndamento} envio(s) em andamento`);
+      const limite = Date.now() + 90000;
+      while (enviosEmAndamento > 0 && Date.now() < limite) await dormir(2000);
+    }
+
     try { await client.destroy(); console.log('[WA] Chrome anterior encerrado.'); }
     catch (e) { console.log('[WA] destroy (ok ignorar):', e.message); }
 
@@ -248,6 +292,7 @@ async function reiniciarConexao() {
     state.qrDataUrl = null;
     state.me = null;
     state.lastError = e.message;
+    registrarEvento('erro_inicializar', e.message);
     console.error('[WA] Erro ao inicializar:', e.message);
     conectando = false;
     agendarReconexao();
@@ -501,5 +546,8 @@ module.exports = {
   listGroups,
   logout,
   resetSession,
+  marcarEnvio,
+  registrarEvento,
+  LOG_CONEXAO,
   inspecionarPrevia
 };

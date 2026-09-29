@@ -1,7 +1,7 @@
 // sender.js — motor de envio com simulação de comportamento humano
 const fs = require('fs');
 const { MessageMedia, Poll } = require('whatsapp-web.js');
-const { client, state } = require('./wa');
+const { client, state, marcarEnvio } = require('./wa');
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const jitter = (min, max) => Math.floor(min + Math.random() * (max - min));
@@ -179,6 +179,8 @@ async function runJob(job, onProgress) {
   for (const f of arqs) { try { bytes += fs.statSync(f.filePath).size; } catch {} }
   const extraPorTamanho = Math.ceil(bytes / (5 * 1024 * 1024)) * 60000;
   const timeoutMs = Math.min(TIMEOUT_ENVIO_MS * nFiles + extraPorTamanho, 20 * 60000);
+  marcarEnvio(+1); // avisa o wa.js para não reiniciar o Chrome durante o envio
+  try {
   for (let i = 0; i < job.groupIds.length; i++) {
     const groupId = job.groupIds[i];
     try {
@@ -193,6 +195,7 @@ async function runJob(job, onProgress) {
     }
   }
   return results;
+  } finally { marcarEnvio(-1); }
 }
 
 module.exports = { runJob };
