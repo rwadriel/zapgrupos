@@ -1,7 +1,7 @@
 // sender.js — motor de envio com simulação de comportamento humano
 const fs = require('fs');
 const { MessageMedia, Poll } = require('whatsapp-web.js');
-const { client, state, marcarEnvio } = require('./wa');
+const { client, state, marcarEnvio, registrarEvento, memoriaContainer } = require('./wa');
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const jitter = (min, max) => Math.floor(min + Math.random() * (max - min));
@@ -134,6 +134,14 @@ async function sendToGroup(job, groupId) {
           await sleep(jitter(1500, 4000));
         }
         const opts = i === 0 ? { ...options, caption: job.caption || undefined } : { waitUntilMsgSent: true };
+        // Registra a memória ANTES de mandar o arquivo. Se o container for
+        // morto por falta de memória, esta é a última linha gravada — e mostra
+        // quanto faltava. É o que diferencia "sem memória" de erro do WhatsApp.
+        try {
+          const m = memoriaContainer();
+          const mb = Math.round((fs.statSync(files[i].filePath).size || 0) / 1048576);
+          registrarEvento('enviando_midia', `${mb}MB | uso ${m.usoMB}MB de ${m.semLimite ? 'sem limite' : m.limiteMB + 'MB'} | node ${m.nodeRssMB}MB`);
+        } catch {}
         await client.sendMessage(groupId, media, opts);
       }
       break;

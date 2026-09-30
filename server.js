@@ -456,6 +456,9 @@ app.get('/api/diagnostico-previa', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Memória do container: limite e uso atual.
+app.get('/api/memoria', (req, res) => res.json(wa.memoriaContainer()));
+
 // Histórico de conexão (quedas, reconexões, QR) gravado em disco.
 app.get('/api/eventos', (req, res) => {
   try {

@@ -35,6 +35,19 @@ function marcarEnvio(delta) {
 }
 const dormir = (ms) => new Promise(r => setTimeout(r, ms));
 
+// Memória do container (cgroup v2). Preparar um vídeo grande cria cópias do
+// arquivo em memória no Node e no Chrome; se estourar o limite do container,
+// o Docker mata tudo — o envio morre com "Target closed" e o app reinicia,
+// sem passar por nenhuma das nossas rotinas de reconexão.
+function memoriaContainer() {
+  const ler = (f) => { try { return fs.readFileSync(f, 'utf8').trim(); } catch { return null; } };
+  const limite = ler('/sys/fs/cgroup/memory.max') || ler('/sys/fs/cgroup/memory/memory.limit_in_bytes');
+  const uso = ler('/sys/fs/cgroup/memory.current') || ler('/sys/fs/cgroup/memory/memory.usage_in_bytes');
+  const mb = (v) => (v && v !== 'max' && Number.isFinite(+v)) ? Math.round(+v / 1048576) : null;
+  const rss = Math.round(process.memoryUsage().rss / 1048576);
+  return { limiteMB: mb(limite), usoMB: mb(uso), nodeRssMB: rss, semLimite: limite === 'max' };
+}
+
 // Mata Chrome órfão antes de subir outro. Quando o initialize() falha no meio
 // (ex.: timeout de pareamento), o processo do Chrome CONTINUA vivo, mas o
 // client perde a referência — então destroy() não o fecha. O próximo launch
@@ -546,6 +559,7 @@ module.exports = {
   listGroups,
   logout,
   resetSession,
+  memoriaContainer,
   marcarEnvio,
   registrarEvento,
   LOG_CONEXAO,
