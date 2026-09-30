@@ -602,6 +602,27 @@ app.post('/api/sinal/test', async (req, res) => {
   }
 });
 
+// ===== Rede de segurança do processo =====
+// O Node encerra o processo quando uma promessa falha sem tratamento — e uma
+// queda do Chrome no meio de um envio produz exatamente isso. O container
+// então reinicia, o que aparece como "o app reiniciou sozinho" sem nenhum
+// evento registrado. Aqui o erro é registrado e o app SEGUE de pé: o envio
+// em questão falha, mas a conexão e a fila continuam.
+process.on('unhandledRejection', (motivo) => {
+  const txt = (motivo && motivo.stack) || String(motivo);
+  console.error('[App] Promessa rejeitada sem tratamento (app segue rodando):', txt);
+  try { wa.registrarEvento('promessa_rejeitada', txt.slice(0, 300)); } catch {}
+});
+
+// Exceção não tratada deixa o estado imprevisível: registra e sai para o
+// container subir limpo — mas agora fica gravado o motivo da reinicialização.
+process.on('uncaughtException', (err) => {
+  const txt = (err && err.stack) || String(err);
+  console.error('[App] Exceção não tratada — encerrando para reiniciar limpo:', txt);
+  try { wa.registrarEvento('excecao_nao_tratada', txt.slice(0, 300)); } catch {}
+  setTimeout(() => process.exit(1), 300);
+});
+
 // ===== Encerramento limpo =====
 // A sessão do WhatsApp mora no perfil do Chrome (.wwebjs_auth). Sem isto, um
 // deploy/restart mandava SIGTERM, o Node morria na hora e o Chrome era morto
