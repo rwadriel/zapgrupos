@@ -1,6 +1,6 @@
 // scheduler.js — verifica a fila a cada 15s e dispara os jobs vencidos
 const store = require('./store');
-const { runJob } = require('./sender');
+const { runJob, gruposPendentes } = require('./sender');
 const { state } = require('./wa');
 const heartbeat = require('./heartbeat');
 
@@ -15,6 +15,20 @@ let running = false;
 // campanhas de vários dias enviarem só o primeiro dia. 60min tolera essas
 // quedas e ainda evita disparar mensagem de horas atrás.
 const MAX_ATRASO_MS = Math.max(1, Number(process.env.ZG_MAX_ATRASO_MINUTOS) || 60) * 60000;
+
+// Reenvio automático: uma queda do app no meio do envio (ou um erro
+// passageiro do WhatsApp) deixava a mensagem como "falhou" para sempre,
+// esperando alguém clicar em Reenviar. Agora o próprio agendador tenta de
+// novo, com espera crescente, e SÓ para os grupos que ainda não receberam —
+// quem já recebeu não recebe duplicado. ZG_RETENTATIVAS=0 desliga.
+const MAX_TENTATIVAS = Math.max(0, Number(process.env.ZG_RETENTATIVAS ?? 5));
+const ESPERAS_MIN = [2, 5, 15, 30, 60];
+const esperaDaTentativa = (n) => ESPERAS_MIN[Math.min(n, ESPERAS_MIN.length - 1)] * 60000;
+
+// Erro que não adianta repetir (o arquivo não existe mais no servidor).
+function ehErroPermanente(results) {
+  return (results || []).some(r => !r.ok && /não encontrado no servidor/i.test(String(r.error || '')));
+}
 
 function descreverJob(job) {
   const quando = new Date(job.sendAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
@@ -50,9 +64,25 @@ async function processJob(job) {
     okCount === results.length ? 'enviada' :
     okCount > 0 ? 'parcial' : 'falhou';
 
-  store.updateJob(job.id, { status, results, sentAt: new Date().toISOString() });
+  // Agenda a próxima tentativa, se ainda fizer sentido tentar.
+  const patch = { status, results, sentAt: new Date().toISOString() };
+  let vaiRetentar = false;
+  if (status !== 'enviada') {
+    const tentativas = (job.tentativas || 0) + 1;
+    const faltam = gruposPendentes({ groupIds: job.groupIds, results }).length;
+    vaiRetentar = MAX_TENTATIVAS > 0 && tentativas <= MAX_TENTATIVAS && faltam > 0 && !ehErroPermanente(results);
+    patch.tentativas = tentativas;
+    patch.proximaTentativaEm = vaiRetentar
+      ? new Date(Date.now() + esperaDaTentativa(tentativas - 1)).toISOString()
+      : null;
+    if (vaiRetentar) {
+      console.log(`[Agendador] Job ${job.id}: ${faltam} grupo(s) sem entrega. Tentativa ${tentativas}/${MAX_TENTATIVAS} em ${Math.round(esperaDaTentativa(tentativas - 1) / 60000)}min.`);
+    }
+  }
+  store.updateJob(job.id, patch);
 
-  if (status === 'falhou' || status === 'parcial') {
+  // Só avisa no celular quando desistiu de vez — senão vira spam a cada tentativa.
+  if ((status === 'falhou' || status === 'parcial') && !vaiRetentar) {
     const falhas = results.filter(r => !r.ok);
     // Log do motivo real da falha — sem isto o container só mostrava
     // "Disparando job..." e o erro ficava escondido dentro do db.json.
@@ -87,7 +117,12 @@ async function tick() {
   if (state.status !== 'conectado') return; // aguarda conexão; envia assim que reconectar
   const now = new Date();
   const due = store.listJobs().filter(j => j.status === 'agendada' && new Date(j.sendAt) <= now);
-  if (!due.length) return;
+  // Reenvios vencidos entram na mesma rodada (não passam pela regra de atraso:
+  // são retentativas, não mensagens agendadas que ficaram para trás).
+  const retentar = store.listJobs().filter(j =>
+    (j.status === 'falhou' || j.status === 'parcial') &&
+    j.proximaTentativaEm && new Date(j.proximaTentativaEm) <= now);
+  if (!due.length && !retentar.length) return;
 
   running = true;
   try {
@@ -126,6 +161,16 @@ async function tick() {
         try { store.updateJob(job.id, { status: 'falhou', results: [{ ok: false, error: e.message, at: new Date().toISOString() }] }); } catch {}
       }
     }
+    for (const job of retentar) {
+      const faltam = gruposPendentes(job).length;
+      console.log(`[Agendador] Reenviando job ${job.id} (tentativa ${(job.tentativas || 0) + 1}) para ${faltam} grupo(s) pendente(s).`);
+      try {
+        store.updateJob(job.id, { proximaTentativaEm: null, status: 'agendada' });
+        await processJob({ ...job, status: 'agendada' });
+      } catch (e) {
+        console.error(`[Agendador] Reenvio do job ${job.id} estourou:`, e.message);
+      }
+    }
   } catch (e) {
     console.error('[Agendador] Erro:', e.message);
   } finally {
@@ -138,8 +183,13 @@ function start() {
   // para poder ser reenviado pela fila, em vez de ficar travado para sempre.
   for (const job of store.listJobs()) {
     if (job.status === 'enviando') {
-      store.updateJob(job.id, { status: 'falhou' });
-      console.log(`[Agendador] Job ${job.id} estava "enviando" durante o restart; marcado como falhou.`);
+      // Reinício no meio do envio: agenda uma retentativa em 2min em vez de
+      // deixar a mensagem parada esperando alguém clicar em Reenviar.
+      store.updateJob(job.id, {
+        status: 'falhou',
+        proximaTentativaEm: new Date(Date.now() + 2 * 60000).toISOString()
+      });
+      console.log(`[Agendador] Job ${job.id} estava "enviando" durante o restart; retentativa em 2min.`);
     }
   }
 

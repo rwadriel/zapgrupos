@@ -176,8 +176,17 @@ async function sendToGroup(job, groupId) {
   }
 }
 
+// Envia só para quem ainda não recebeu. Numa retentativa, os grupos que já
+// confirmaram entrega são pulados — é o que evita mensagem duplicada.
+function gruposPendentes(job) {
+  const entregues = new Set((job.results || []).filter(r => r.ok).map(r => r.groupId));
+  return (job.groupIds || []).filter(g => !entregues.has(g));
+}
+
 async function runJob(job, onProgress) {
-  const results = [];
+  const alvo = gruposPendentes(job);
+  const jaEntregues = (job.results || []).filter(r => r.ok);
+  const results = [...jaEntregues];
   // Mensagens com vários arquivos demoram mais: o teto cresce junto.
   const nFiles = (job.files && job.files.length) || 1;
   // Arquivo grande demora mais para subir: soma 1min a cada 5MB, para um
@@ -189,8 +198,8 @@ async function runJob(job, onProgress) {
   const timeoutMs = Math.min(TIMEOUT_ENVIO_MS * nFiles + extraPorTamanho, 20 * 60000);
   marcarEnvio(+1); // avisa o wa.js para não reiniciar o Chrome durante o envio
   try {
-  for (let i = 0; i < job.groupIds.length; i++) {
-    const groupId = job.groupIds[i];
+  for (let i = 0; i < alvo.length; i++) {
+    const groupId = alvo[i];
     try {
       await comTimeout(sendToGroup(job, groupId), timeoutMs);
       results.push({ groupId, ok: true, at: new Date().toISOString() });
@@ -198,7 +207,7 @@ async function runJob(job, onProgress) {
       results.push({ groupId, ok: false, error: e.message, at: new Date().toISOString() });
     }
     if (onProgress) onProgress(results);
-    if (i < job.groupIds.length - 1 && job.humanize !== false) {
+    if (i < alvo.length - 1 && job.humanize !== false) {
       await sleep(jitter(8000, 20000));
     }
   }
@@ -206,4 +215,4 @@ async function runJob(job, onProgress) {
   } finally { marcarEnvio(-1); }
 }
 
-module.exports = { runJob };
+module.exports = { runJob, gruposPendentes };
